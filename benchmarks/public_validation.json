@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "description": "自包含解析收敛；非研究面板，非训练",
+  "environment": {
+    "python": "3.13.11",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "platform": "Linux",
+    "machine": "x86_64"
+  },
+  "analytic": {
+    "parameters": {
+      "g": 1,
+      "N": 2,
+      "L": 1,
+      "eta": 0,
+      "gamma": 0
+    },
+    "drive": "Ein=1, sw=1, t in [0,1]",
+    "rows": [
+      {
+        "method": "marcher",
+        "n": 17,
+        "max_abs_E": 0.0005117433605654476,
+        "max_abs_alpha": 0.0002607536038216618,
+        "elapsed_seconds": 0.0029132330091670156
+      },
+      {
+        "method": "marcher",
+        "n": 33,
+        "max_abs_E": 0.00012795467499099322,
+        "max_abs_alpha": 6.526232945824884e-05,
+        "elapsed_seconds": 0.0038841940695419908,
+        "order_E": 1.9997876205439344,
+        "order_alpha": 1.998364803393618
+      },
+      {
+        "method": "marcher",
+        "n": 65,
+        "max_abs_E": 3.1989854055475275e-05,
+        "max_abs_alpha": 1.631846872940379e-05,
+        "elapsed_seconds": 0.007755198050290346,
+        "order_E": 1.9999465433865962,
+        "order_alpha": 1.9997447975893636
+      },
+      {
+        "method": "if2",
+        "n": 17,
+        "max_abs_E": 0.0005117433605661414,
+        "max_abs_alpha": 0.0002607536038222724,
+        "elapsed_seconds": 0.0008736709132790565
+      },
+      {
+        "method": "if2",
+        "n": 33,
+        "max_abs_E": 0.00012795467499016056,
+        "max_abs_alpha": 6.52623294575827e-05,
+        "elapsed_seconds": 0.001170522067695856,
+        "order_E": 1.999787620555279,
+        "order_alpha": 1.9983648034117223
+      },
+      {
+        "method": "if2",
+        "n": 65,
+        "max_abs_E": 3.198985405550303e-05,
+        "max_abs_alpha": 1.6318468729570323e-05,
+        "elapsed_seconds": 0.0022504919907078147,
+        "order_E": 1.999946543375956,
+        "order_alpha": 1.9997447975599152
+      }
+    ]
+  },
+  "illustration": {
+    "parameters": {
+      "g": 1,
+      "N": 5,
+      "L": 1,
+      "eta": 12,
+      "gamma": -0.001
+    },
+    "output_shape": [
+      81,
+      161
+    ],
+    "z_factor": 4,
+    "t_factor": 4,
+    "native_drive_nodes": 201,
+    "pulse_time": 0.35,
+    "pulse_width": 0.12,
+    "switch_time": 1
+  },
+  "passed": true,
+  "training_steps": 0
+}

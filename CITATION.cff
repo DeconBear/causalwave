@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "如使用本软件，请引用此仓库版本，并单独引用所使用的XMDS2软件。"
+title: "gem-solvers：GEM的marcher与IF2复场数值求解器"
+authors:
+  - name: "DeconBear"
+version: 0.1.0
+date-released: 2026-10-20
+license: MIT
+url: "https://github.com/DeconBear/gem-solvers"
+repository-code: "https://github.com/DeconBear/gem-solvers"

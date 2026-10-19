@@ -1,0 +1,6 @@
+include AGENTS.md CONTRIBUTING.md CITATION.cff llms.txt mkdocs.yml
+recursive-include docs *.md *.txt *.js *.css *.png
+recursive-include examples *.py *.xmds
+recursive-include scripts *.py
+recursive-include benchmarks *.json
+recursive-include tests *.py

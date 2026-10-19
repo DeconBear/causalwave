@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<simulation xmds-version="2">
+  <name>gem</name>
+  <author>gem-solvers contributors</author>
+  <description>两能级GEM示例；阶段边界与梯度翻转时刻严格对齐，输出完整复场。</description>
+  <features>
+    <validation kind="run-time"/>
+    <globals><![CDATA[
+      const real coupling = $g;
+      const real density = $N;
+      const real length = $L;
+      const real gradient = $eta;
+      const real gamma_signed = $gamma;
+      const real pulse_time = $pulse_time;
+      const real pulse_width = $pulse_width;
+      const real amplitude = $amplitude;
+    ]]></globals>
+  </features>
+  <geometry>
+    <propagation_dimension>t</propagation_dimension>
+    <transverse_dimensions>
+      <dimension name="z" lattice="$lattice" domain="(0, $L)"/>
+    </transverse_dimensions>
+  </geometry>
+  <vector name="coherence" type="complex" initial_space="z">
+    <components>alpha</components>
+    <initialisation><![CDATA[alpha = 0;]]></initialisation>
+  </vector>
+  <vector name="field" type="complex" initial_space="z">
+    <components>E</components>
+  </vector>
+  <sequence>
+    <integrate algorithm="ARK89" interval="$write_time" steps="$steps" tolerance="$tolerance">
+      <samples>$samples</samples>
+      <operators>
+        <operator kind="cross_propagation" algorithm="RK4" propagation_dimension="z">
+          <integration_vectors>field</integration_vectors>
+          <dependencies>coherence</dependencies>
+          <boundary_condition kind="left"><![CDATA[
+            E = amplitude * exp(-pow((t - pulse_time) / pulse_width, 2));
+          ]]></boundary_condition>
+          <![CDATA[dE_dz = i * density * alpha;]]>
+        </operator>
+        <integration_vectors>coherence</integration_vectors>
+        <![CDATA[dalpha_dt = (gamma_signed + i * gradient * (z - length/2)) * alpha + i * coupling * E;]]>
+      </operators>
+    </integrate>
+    <integrate algorithm="ARK89" interval="$read_time" steps="$steps" tolerance="$tolerance">
+      <samples>$samples</samples>
+      <operators>
+        <operator kind="cross_propagation" algorithm="RK4" propagation_dimension="z">
+          <integration_vectors>field</integration_vectors>
+          <dependencies>coherence</dependencies>
+          <boundary_condition kind="left"><![CDATA[
+            E = amplitude * exp(-pow((t - pulse_time) / pulse_width, 2));
+          ]]></boundary_condition>
+          <![CDATA[dE_dz = i * density * alpha;]]>
+        </operator>
+        <integration_vectors>coherence</integration_vectors>
+        <![CDATA[dalpha_dt = (gamma_signed - i * gradient * (z - length/2)) * alpha + i * coupling * E;]]>
+      </operators>
+    </integrate>
+  </sequence>
+  <output format="ascii" filename="gem.xsil">
+    <group>
+      <sampling basis="z($z_samples)" initial_sample="no">
+        <moments>E_real E_imag alpha_real alpha_imag</moments>
+        <dependencies>coherence field</dependencies>
+        <![CDATA[
+          E_real = E.Re(); E_imag = E.Im();
+          alpha_real = alpha.Re(); alpha_imag = alpha.Im();
+        ]]>
+      </sampling>
+    </group>
+  </output>
+</simulation>

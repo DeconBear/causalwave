@@ -1,0 +1,98 @@
+{
+  "source_repository": "https://github.com/DeconBear/GEM_PINN",
+  "source_commit": "c117869712f8dc0792b24852865b31a85500bc40",
+  "sources": [
+    {
+      "path": "fno_solver/experiments/exp_123_full_panel_confirmation_audit/report.md",
+      "sha256": "5cec53132e33e5b0ecf932c2b52537afbac2242853dde3b8524cabb1025f2d3e"
+    },
+    {
+      "path": "fno_solver/experiments/exp_124_solver_memory_audit/report.md",
+      "sha256": "b3415153f6ad57fc7b8ea8cb5a9ccf6d9afb73c14e89fa0d0431dc114040da21"
+    },
+    {
+      "path": "fno_solver/experiments/exp_125_xmds_timing_audit/report.md",
+      "sha256": "502f59525207610a839af847c2610d26b4609c55822a0fe68f4d8cc571615f98"
+    }
+  ],
+  "raw_reference_data_included": false,
+  "description": "历史报告有限汇总；原始面板不分发，不是本发行版新增测量",
+  "exp_123": {
+    "cases": 24,
+    "train": 16,
+    "development": 8,
+    "hidden_test_opened": false,
+    "rows": [
+      {
+        "method": "if2_z16_t2",
+        "passed": 24,
+        "train_max_percent": [
+          0.5594,
+          0.4189
+        ],
+        "dev_max_percent": [
+          0.3532,
+          0.253
+        ],
+        "median_seconds": 2.97,
+        "worst_seconds": 4.018
+      },
+      {
+        "method": "if2_z32_t2",
+        "passed": 24,
+        "train_max_percent": [
+          0.5059,
+          0.2708
+        ],
+        "dev_max_percent": [
+          0.3207,
+          0.2237
+        ],
+        "median_seconds": 5.77,
+        "worst_seconds": 7.839
+      },
+      {
+        "method": "marcher_z32_t2",
+        "passed": 23,
+        "train_max_percent": [
+          0.5191,
+          0.32
+        ],
+        "dev_max_percent": [
+          0.43,
+          1.2225
+        ],
+        "median_seconds": 13.253,
+        "worst_seconds": 13.81
+      }
+    ]
+  },
+  "exp_124": {
+    "cases_per_configuration": 3,
+    "rss_gib_mean_max": {
+      "if2_z16_t2": [
+        0.605,
+        0.605
+      ],
+      "marcher_z16_t2": [
+        6.762,
+        6.763
+      ],
+      "marcher_z32_t2": [
+        12.86,
+        12.861
+      ]
+    }
+  },
+  "exp_125": {
+    "compile_seconds": [
+      1.947,
+      1.474
+    ],
+    "run_seconds": [
+      9.449,
+      9.729
+    ],
+    "matched_accuracy_comparison": false
+  }
+}

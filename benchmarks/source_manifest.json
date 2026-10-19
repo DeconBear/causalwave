@@ -1,0 +1,36 @@
+{
+  "source_repository": "https://github.com/DeconBear/GEM_PINN",
+  "source_commit": "c117869712f8dc0792b24852865b31a85500bc40",
+  "files": [
+    {
+      "source": "marcher/core.py",
+      "destination": "src/marcher/core.py",
+      "source_sha256": "5cce860c41e4094e7fe9e20a46ebc6c26429ebbcf92297d53fbc18f1357ef47d",
+      "distribution_sha256": "a8524c3be16c88edf9a81b508450cc40df017c65d4312c08f832d5959e49aa2f"
+    },
+    {
+      "source": "marcher/protocols.py",
+      "destination": "src/marcher/protocols.py",
+      "source_sha256": "dd3f689eb301d9d3033a58ebc67b663af703420a29f9d6415f858e13840fa848",
+      "distribution_sha256": "dd3f689eb301d9d3033a58ebc67b663af703420a29f9d6415f858e13840fa848"
+    },
+    {
+      "source": "marcher/observables.py",
+      "destination": "src/marcher/observables.py",
+      "source_sha256": "a4933f9077f9a2bbb1a24b57cb115c43fc24240e3586199fa6ce4c9e5de085ab",
+      "distribution_sha256": "a4933f9077f9a2bbb1a24b57cb115c43fc24240e3586199fa6ce4c9e5de085ab"
+    },
+    {
+      "source": "fno_solver/physics_operator.py",
+      "destination": "src/gem_solvers/_if2_reference.py",
+      "source_sha256": "4008d3473e1109ec0b55190d249ccdb8dde02fca04e6d45432aaeb7dde793950",
+      "distribution_sha256": "4008d3473e1109ec0b55190d249ccdb8dde02fca04e6d45432aaeb7dde793950"
+    },
+    {
+      "source": "fno_solver/physics_operator_cached.py",
+      "destination": "src/gem_solvers/_if2.py",
+      "source_sha256": "652a0918708db7ba7397788401700c9075935a3b651a0885fc4cddd4a5eaadf8",
+      "distribution_sha256": "cd33fb18e9f065c4683841e20155ff0a61aba6495e400c1d624e86ec0d1f04df"
+    }
+  ]
+}

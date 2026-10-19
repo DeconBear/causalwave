@@ -1,0 +1,43 @@
+site_name: GEM Solvers
+site_description: 梯度回波记忆的复场数值求解、数学推导与可复现验证
+site_url: https://deconbear.github.io/gem-solvers/
+repo_url: https://github.com/DeconBear/gem-solvers
+repo_name: DeconBear/gem-solvers
+copyright: © 2026 DeconBear · MIT
+strict: true
+theme:
+  name: material
+  language: zh
+  palette:
+    scheme: default
+    primary: indigo
+    accent: teal
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+nav:
+  - 概览: index.md
+  - 安装与首个算例: installation.md
+  - 数学模型与求解原理: methods.md
+  - 验证、成本与局限: validation.md
+  - Python API: api.md
+  - XMDS2 接口: xmds.md
+  - 给 LLM 与 agent: agents.md
+  - 来源与引用: provenance.md
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.arithmatex:
+      generic: true
+extra_javascript:
+  - assets/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+extra_css:
+  - assets/style.css

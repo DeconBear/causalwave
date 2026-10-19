@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+site/
+outputs/
+*.npz
+*.dat
+*.xsil
+*.cc
+*.o
+.DS_Store

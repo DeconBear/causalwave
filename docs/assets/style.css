@@ -1,0 +1,6 @@
+:root { --md-primary-fg-color: #243d68; --md-accent-fg-color: #007e80; }
+.md-typeset h1 { color: #243d68; font-weight: 700; }
+.md-typeset h2 { border-bottom: 1px solid #dce3ed; padding-bottom: .35rem; }
+.md-typeset .arithmatex { overflow-x: auto; }
+.md-typeset img { border-radius: 6px; }
+.md-typeset table:not([class]) { font-size: .74rem; }

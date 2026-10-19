@@ -1,0 +1,616 @@
+# GEM Solvers 完整说明
+
+由 scripts/build_llms.py 生成；相对链接按来源页面解析。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/
+
+# GEM Solvers：复场、因果推进与可复现验证
+
+**不训练网络，直接求解梯度回波记忆（GEM）的线性场方程。**
+
+本项目把两个独立数值后端整理成可安装的 Python 包：marcher 在时空网格上解局部耦合块系统；IF2 先消去光场的空间传播，再用指数权重推进原子相干性。两者都输出完整的复数 $E(z,t)$ 和 $\alpha(z,t)$，而非只拟合光强或输出一个存储效率。
+
+## 从哪里开始
+
+- **运行算例：** [安装指南](installation.md) → [Python API](api.md)。
+- **理解算法：** [模型、离散公式与复杂度](methods.md) → [收敛证据和适用边界](validation.md)。
+- **交给自己的 agent：** [可执行安装合同](agents.md)、[llms.txt](llms.txt)、[合并的纯文本说明](llms-full.txt)。
+- **与外部求解器对照：** [XMDS2 的输入生成、运行和读取](xmds.md)。
+
+|后端|核心方法|内部存储|可定制范围|
+|---|---|---|---|
+|marcher|两个坐标方向的梯形离散；沿 $i+j$ 推进|细时空网格上的系数和状态|一般单向输运与线性局部演化；含 GEM / Λ-GEM 协议|
+|IF2|Volterra 空间积分；二阶指数拟合；双对角解|当前细空间状态、输出网格、有限缓存|本发行版的线性两能级 GEM|
+|XMDS2（可选）|外部代码生成器与独立积分器|由生成程序决定|本项目提供一个可调用的两阶段 GEM 示例|
+
+![两复场数值示例](assets/gem_fields.png)
+
+图中的输入、翻转时刻、参数与生成脚本均在仓库内。该图用于说明接口和场结构，不能单凭视觉证明任意参数下的精度。
+
+## 必须保留的物理合同
+
+本项目使用 $\partial_t\alpha=(\gamma+i\eta\,s(t)(z-L/2))\alpha+igE$。**$\gamma$ 是方程中的有符号系数；物理退相干率 $\Gamma>0$ 对应输入 `gamma=-Gamma`。** 驱动采用原生节点定义，入射复振幅在节点间线性插值，梯度控制在节点间左常值保持。输出坐标不会反过来替代驱动定义。
+
+这是一份数值软件与方法说明，不宣称算法新颖性，不把历史面板的通过结果推广为全域保证。仓库自包含解析测试；历史研究面板的原始参考数据不随发行包分发。[来源与引用](provenance.md)说明这些边界。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/installation/
+
+# 安装与首个算例
+
+## 最小环境
+
+Python 3.10 及以上；NumPy 2.0 及以上；SciPy 1.13.1 及以上。NumPy 2.0 下限来自观测量接口对 `np.trapezoid` 的使用。无 PyTorch、CUDA、训练权重、云服务或 API 密钥依赖。XMDS2 是单独可选的系统工具链。
+
+```bash
+git clone https://github.com/DeconBear/gem-solvers.git
+cd gem-solvers
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[test]'
+gem-solvers doctor --json
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q -m 'not xmds'
+gem-solvers demo --method if2 --output outputs/first.npz
+```
+
+目前没有发布 PyPI 版本；请使用上述 GitHub 地址。Windows PowerShell 使用 `.venv\Scripts\Activate.ps1` 激活环境。CPU 共享时用 `OPENBLAS_NUM_THREADS=1` 和 `OMP_NUM_THREADS=1` 限制库线程数；它们不限制外部 XMDS 程序的所有潜在并行配置。
+
+## 检查结果
+
+`doctor` 输出当前 Python、NumPy、SciPy、包版本以及可选编译器路径。`demo` 输出两个复场的形状、耗时和保存位置；它是有限网格的仿真，不是训练。已有结果文件拒绝覆盖，请换新文件名。读取：
+
+```python
+import numpy as np
+with np.load("outputs/first.npz") as data:
+    E, alpha, z, t = (data[k] for k in ("E", "alpha", "z", "t"))
+    print(E.shape, alpha.dtype, z[-1], t[-1])
+```
+
+更完整的可运行例子见仓库 `examples/quickstart.py`；将 `method="if2"` 改为 `"marcher"` 可比较两后端。开始新的物理问题时，必须保存输入参数、原生驱动和加密因子，分别检查 $E$ 与 $\alpha$ 的复数误差。
+
+## 文档、图表与构建
+
+```bash
+python -m pip install -e '.[test,docs,plot]'
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/validate_public.py
+python scripts/build_llms.py
+python -m mkdocs build --strict
+python -m mkdocs serve
+python -m build
+```
+
+科学图使用 Matplotlib 生成；MathJax 从 CDN 渲染公式。离线阅读可查看仓库 Markdown 与 `llms-full.txt` 中的 LaTeX 原文。源码包与 wheel 都应包含 XMDS 模板；CI 检查 Python 版本矩阵，独立任务检查真实 XMDS 工具链。
+
+## 常见问题
+
+|症状|处理|
+|---|---|
+|导入失败|使用同一个虚拟环境中的 `python -m pip` 和 `python`，检查 `doctor`|
+|系统 Python 拒绝 pip 写入|创建 venv，不绕过系统环境保护|
+|没有 `xmds2`|两个 Python 后端仍可使用；按 [XMDS 页面](xmds.md)单独安装|
+|场误差过大|保留原生驱动，先分别加密空间、时间并比较两个复场；不能只加密输出图片|
+|内存不足|先降低测试规模；marcher 存储细网格，IF2 存储方式不同；不要同时启动多组大网格|
+|输出目录已存在|新建算例目录，保留旧结果和失败日志|
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/methods/
+
+# 梯度回波记忆的两种因果数值离散
+
+## 摘要
+
+本文说明 `gem-solvers` 中 marcher 与 IF2 的数学模型、离散方程、实现映射和误差来源。研究对象是一维弱场线性 GEM：光场沿空间单向传播，原子相干性沿时间演化。marcher 保留两个场，在每个网格点联立求解梯形离散所得的小型复线性系统；IF2 用空间累积积分消去光场，精确处理区间内的局部对角相位，再对耦合项作二阶端点指数拟合。空间 Volterra 结构允许 IF2 每个时间步只解一个下双对角系统。这里的“精确”仅指指定离散式内的局部指数与线性代数求解，不意味着完整 PDE 的精确解。
+
+**关键词：** 梯度回波记忆；复振幅；Volterra 积分；梯形法；指数拟合；因果推进。
+
+## 1. 模型、边界与适用范围
+
+设 $z\in[0,L]$、$t\geq0$，探针场为 $E\in\mathbb C$，原子相干性为 $\alpha\in\mathbb C$：
+
+$$
+\partial_zE=iN\alpha,\qquad
+\partial_t\alpha=D(z,t)\alpha+igE,\qquad
+D(z,t)=\gamma+i\eta s(t)(z-L/2). \tag{1}
+$$
+
+边界和初态为
+
+$$ E(0,t)=u(t),\qquad \alpha(z,0)=0. \tag{2} $$
+
+$g,N,\eta,L$ 为实参数；它们必须与坐标、入射场采用一致的单位或无量纲化。代码不进行自动单位换算。$\gamma$ 是式 (1) 的有符号系数：退相干写作 $\gamma=-\Gamma$、$\Gamma\geq0$；输入正值将产生增长，不能在报告中称作衰减。
+
+常见 GEM 控制为写入段 $s=+1$、读出段 $s=-1$。这里允许任意有限的实值分段常数 $s(t)$ 和复数分段线性 $u(t)$。这是弱场、单向传播的线性模型；不包含布居饱和、反向传播、扩散或横向衍射。低层 marcher 另有三能级 `LambdaGEM`，并不意味着本页 IF2 已推广到该体系。
+
+### 1.1 原生驱动与真实事件
+
+原生节点 $\tau_k$ 定义输入：在 $[\tau_k,\tau_{k+1})$ 内，$s(t)=s_k$，$u(t)$ 按两个端点线性插值。内部时间网格取原生节点、输出节点和零时刻的并集再逐区间加密；因此不会跨越一个未显式拆分的已知跳变。
+
+到达翻转时刻的前一积分区间使用左侧控制；从该时刻出发的后一积分区间使用新控制。状态连续，导数可跳变。降低输出采样率不会改变驱动；但遗漏驱动事件会改变被求解的问题，增加求解器步数不能补回缺失的信息。
+
+## 2. marcher：时空梯形块系统
+
+### 2.1 一般形式
+
+令输运场 $U\in\mathbb C^P$、局部演化场 $V\in\mathbb C^Q$：
+
+$$ U_z=AV+s,\qquad V_t=BV+CU+r. \tag{3} $$
+
+给定左边界 $U(0,t)$ 与初态 $V(z,0)$。GEM 对应 $P=Q=1$、$A=iN$、$B=D$、$C=ig$、$s=r=0$。系数与源项可以依赖时空，但场的耦合必须是线性的局部零阶项。
+
+在 $(z_i,t_j)$ 记 $c_i=(z_i-z_{i-1})/2$、$d_j=(t_j-t_{j-1})/2$。空间、时间方向分别用梯形公式，得到
+
+$$
+\begin{pmatrix}
+I&-c_i A_{ij}\\
+-d_j C_{ij}&I-d_j B_{ij}^{-}
+\end{pmatrix}
+\begin{pmatrix}U_{ij}\\V_{ij}\end{pmatrix}
+=
+\begin{pmatrix}R^U_{ij}\\R^V_{ij}\end{pmatrix}, \tag{4}
+$$
+
+其中
+
+$$
+R^U_{ij}=U_{i-1,j}+c_i\left(A_{i-1,j}V_{i-1,j}+s_{i-1,j}+s_{ij}\right), \tag{5}
+$$
+
+$$
+R^V_{ij}=V_{i,j-1}+d_j\left(B_{i,j-1}V_{i,j-1}+C_{i,j-1}U_{i,j-1}+r_{i,j-1}+r_{ij}\right). \tag{6}
+$$
+
+$B_{ij}^{-}$ 对声明为阶跃的分量取当前时间区间内部的左侧值；其他平滑分量取端点值。这与代码中的 `B_step_mask` 一致。时间端点的 $C_{ij}U_{ij}$ 已进入式 (4) 左侧，不应在式 (6) 重复添加。
+
+### 2.2 因果推进顺序
+
+式 (4) 只依赖左侧点 $(i-1,j)$ 与下侧点 $(i,j-1)$。按 $i+j=1,2,\ldots$ 的顺序推进，同一对角线上各点可向量化求解。两个边缘必须分别处理：
+
+1. $t=0$：$V$ 由初态固定，$U$ 沿空间梯形积分。对于零相干性，应有整个初始截面 $E(z,0)=u(0)$。
+2. $z=0$：$U$ 由边界固定，$V$ 沿时间梯形积分。一般 $\alpha(0,t)$ 不为零。
+3. 内部点：联立求解式 (4)，保留复振幅与相位。
+
+当前实现对 $2\times2$、$3\times3$ 块使用显式小矩阵公式，其他维度使用 NumPy 线性代数。它是对角线**推进**，不是沿某条特征线返回 PDE 解析解。
+
+### 2.3 精度与成本
+
+在分段光滑、网格充分解析且离散系统适定时，梯形空间与时间离散具有二阶一致性。必须检查网格收敛；不能把标量 Crank–Nicolson 的 A 稳定性直接推广成任意耦合系数、任意步长下的无条件准确或稳定。
+
+固定 $P,Q$ 时，工作量与内部格点数 $n_z n_t$ 成正比；一般块求解另有约 $(P+Q)^3$ 的局部代价。当前实现保留细时空系数和状态，内存随 $n_z n_t$ 增长。这是大加密倍数下需要注意的主要成本。
+
+## 3. IF2：空间消元与二阶指数拟合
+
+这里 IF2 是本项目对以下二阶指数拟合格式的简称，**不是对所有文献中“IF2”命名方法的等同声明**。
+
+### 3.1 用 Volterra 积分消去光场
+
+由式 (1) 的 Maxwell 方程与边界得
+
+$$ E(z,t)=u(t)+iN\int_0^z\alpha(\zeta,t)\,d\zeta. \tag{7} $$
+
+在空间网格上，用累积梯形算子 $Q$：
+
+$$ (Qa)_j=\sum_{\ell=1}^{j}\frac{\Delta z_\ell}{2}(a_{\ell-1}+a_\ell),\qquad (Qa)_0=0. \tag{8} $$
+
+于是空间半离散系统为
+
+$$ \dot a=Da-\kappa Qa+igu(t)\boldsymbol1,\qquad \kappa=gN. \tag{9} $$
+
+$Q$ 虽可表示成下三角矩阵，代码并不构造稠密矩阵，而是做累积求和。
+
+### 3.2 变常数公式与指数权重
+
+在没有控制跳变的时间区间 $[t_n,t_{n+1}]$ 内，$D$ 是固定对角算子，步长为 $h$。令 $f=-\kappa Qa+igu\boldsymbol1$，则
+
+$$ a_{n+1}=e^{hD}a_n+\int_0^h e^{(h-\tau)D}f(t_n+\tau)\,d\tau. \tag{10} $$
+
+对积分内的 $f$ 作端点线性近似。定义逐元素计算的
+
+$$
+\varphi_1(x)=\frac{e^x-1}{x},\qquad
+\varphi_2(x)=\frac{e^x-1-x}{x^2},\qquad
+\varphi_1(0)=1,\quad\varphi_2(0)=\tfrac12,
+$$
+
+$$ R=e^{hD},\qquad w_0=h[\varphi_1(hD)-\varphi_2(hD)],\qquad w_1=h\varphi_2(hD). \tag{11} $$
+
+实现对小 $|hD|$ 使用级数，避免相近数相减导致的消减误差。更新式为
+
+$$
+b=Ra_n-\kappa w_0Qa_n+ig(w_0u_n+w_1u_{n+1}),\qquad
+a_{n+1}=b-q p,\quad q=\kappa w_1,\quad p=Qa_{n+1}. \tag{12}
+$$
+
+向量乘积 $w_0Qa_n$、$qp$ 均为逐元素乘法。当 $D=0$，$w_0=w_1=h/2$，式 (12) 退化成空间半离散系统的梯形时间格式。
+
+### 3.3 双对角系统
+
+设 $c_j=\Delta z_j/2$。由 $p_j-p_{j-1}=c_j(a_{j-1}+a_j)$，将式 (12) 代入可得
+
+$$
+(1+c_jq_j)p_j-(1-c_jq_{j-1})p_{j-1}=c_j(b_{j-1}+b_j),\quad j\geq1;\qquad p_0=0. \tag{13}
+$$
+
+这就是下双对角系统。实现用 SciPy `solve_banded((1, 0), ...)`，随后恢复 $a_{n+1}=b-qp$，重新累积积分并按式 (7) 恢复光场。重新计算积分使下一步状态与累积梯形算子保持一致；不是额外的训练或拟合。
+
+### 3.4 “指数处理”解决和没有解决的部分
+
+- 区间内局部对角相位 $e^{hD}$ 被直接计算，减少普通梯形推进对高频局部相位的时间色散。
+- 当 $N=0$ 且驱动按合同分段线性时，式 (10) 的区间积分可由这些权重精确表达，误差主要是浮点运算。
+- 有耦合时 $Qa(t)$ 一般不是时间线性的，端点拟合仍有截断误差；IF2 不是完整耦合系统的精确指数。
+- 高频 $\alpha(z,t)$ 仍需要足够的空间分辨率；精确处理时间相位不能恢复未解析的空间振荡。
+
+在适当稳定与光滑条件下，时间全局误差为二阶，空间累积梯形误差也为二阶。跳变需要明确分段。是否达到 1% 必须由两个复场的独立收敛和参考比较决定。
+
+### 3.5 缓存与复杂度
+
+每步累积积分和双对角解均为 $O(n_z)$，总工作量为 $O(n_z n_t)$。内部状态为 $O(n_z)$，外加 $O(n_z^{out}n_t^{out})$ 的请求输出。当前实现每次求解内部使用最多 64 MiB 的 LRU 指数权重缓存，以**精确** `(h, sw)` 为键，不舍入步长或控制，也不跨不同参数/网格的请求复用。浮点步长看似相同但二进制不同会产生不同键；缓存命中率影响耗时，不改变离散公式。
+
+## 4. 两个实现的比较边界
+
+两者求解相同的两能级模型，但误差常数、内存布局和相位处理不同。IF2 的空间消元利用了 GEM 特定的 Volterra 结构；marcher 的一般块接口更易表达多个局部演化场。不能只用代码行数、一个示例的速度或图形相似来判断哪个方法“更准确”。
+
+公平比较应固定：物理参数、原生驱动、输出坐标、复场误差定义、参考精度、线程数、硬件和是否计入编译。先为每个后端找满足相同精度门槛的网格，再报告时间与峰值内存。当前仓库的[验证页面](validation.md)把自包含解析证据与历史面板分开说明。
+
+## 5. 实现与参考
+
+- 式 (4)–(6)：`src/marcher/core.py` 的 `_solve_block` 与 `march_system`。
+- 式 (11)：`src/gem_solvers/_if2_reference.py` 的 `_exponential_weights`。
+- 式 (12)–(13)：`src/gem_solvers/_if2.py` 的 `solve_gem_cached`。
+- 统一驱动/坐标合同：`src/gem_solvers/api.py`。
+
+带状矩阵存储遵循 [SciPy solve_banded 官方定义](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)。XMDS2 是独立工具链，方法背景见 [Dennis 等，Computer Physics Communications 184, 201–208 (2013)](https://doi.org/10.1016/j.cpc.2012.08.016)。本页的离散推导以随仓库发布的实现为依据；不将这些常见数值构造宣称为新的物理模型或新的算法发明。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/validation/
+
+# 验证、成本与局限
+
+## 1. 自包含解析解：可在新仓库独立重跑
+
+令 $g=1,N=2,L=T=1,\eta=\gamma=0$，入射 $u(t)=1$，初态 $\alpha=0$。定义 $x=gNzt$，则
+
+$$
+E(z,t)=J_0(2\sqrt{x}),\qquad
+\alpha(z,t)=igt\frac{J_1(2\sqrt{x})}{\sqrt{x}},\qquad
+\left.\frac{J_1(2\sqrt{x})}{\sqrt{x}}\right|_{x=0}=1.
+$$
+
+该解析解可直接代入两条 PDE 和边界条件验证。仓库脚本 `scripts/validate_public.py` 在 $17^2,33^2,65^2$ 网格上计算完整复场最大绝对误差，不依赖任何训练数据或源工程文件。同步加密空间和时间所得记录见 `benchmarks/public_validation.json`。
+
+|后端|网格|E 最大绝对误差|alpha 最大绝对误差|最后一级观测阶 E / alpha|
+|---|---:|---:|---:|---:|
+|marcher|17 × 17|5.1174e-4|2.6075e-4|—|
+|marcher|33 × 33|1.2795e-4|6.5262e-5|—|
+|marcher|65 × 65|3.1990e-5|1.6318e-5|1.99995 / 1.99974|
+|IF2|17 × 17|5.1174e-4|2.6075e-4|—|
+|IF2|33 × 33|1.2795e-4|6.5262e-5|—|
+|IF2|65 × 65|3.1990e-5|1.6318e-5|1.99995 / 1.99974|
+
+![解析收敛图](assets/convergence.png)
+
+两后端曲线在这里重合是预期现象：$D=0$ 时 IF2 退化为梯形时间格式。这个算例检查耦合、边界、两复场及二阶收敛，但**不能单独证明高梯度相位处理的优越性**。耗时仅记录为本次运行成本，不以微秒级小算例比较真实性能。
+
+## 2. 测试分别验证哪些层
+
+|证据|检验内容|不能推出|
+|---|---|---|
+|贝塞尔解析解|两场耦合、零初态、非零入射、二阶收敛|全参数域精度|
+|通用制造解与非均匀网格|核心块推进、源项、初态、真实坐标采样|实际器件物理有效性|
+|零密度的独立 DOP853 对照|复驱动、局部相位和退相干、事件左右极限|所有高密度耦合情况|
+|空间半离散矩阵 ODE 对照|非零耦合下 IF2 时间推进|连续空间误差已消失|
+|复线性与边界测试|叠加关系、相位通道、初态传播|与独立参考的绝对精度|
+|缓存前后对照|缓存不改变离散运算结果|缓存一定加速|
+|真实 XMDS 零耦合算例|编译运行、解析高斯、复场字段、真实坐标|大参数高梯度精度|
+|真实 XMDS 有耦合算例|同实际坐标的两复场相对 L2 误差均低于 0.5%|XMDS 是无误差真值、任意问题均低于1%|
+|XMDS 失败与覆盖保护|失败日志保留、不覆盖已有结果|任意第三方输入都可安全运行|
+
+运行非 XMDS 测试无需系统编译器；标记为 `xmds` 的测试缺依赖会跳过，不能把跳过算通过。CI 分开报告这两类任务。
+
+## 3. 两复场误差的定义
+
+对于同一组实际采样坐标，分别计算
+
+$$
+\epsilon_E=\frac{\|E-E_{ref}\|_2}{\|E_{ref}\|_2},\qquad
+\epsilon_\alpha=\frac{\|\alpha-\alpha_{ref}\|_2}{\|\alpha_{ref}\|_2}.
+$$
+
+这是复数组的离散 L2 / Frobenius 范数，保留实部和虚部，不是 $|E|$ 的误差。非均匀坐标时它不自动等于连续积分范数；如需物理加权积分必须明确权重并对所有后端一致使用。参考场为零或近零时改用明确的绝对误差，不用任意小分母制造相对指标。
+
+“逐例两场均低于1%”比“平均误差低于1%”严格。下面历史面板使用前者，公开解析表使用最大绝对误差；两种指标不能混为一谈。
+
+## 4. 历史冻结面板：不是本发行版的新测试
+
+以下数字来自源研究工程 exp_123 的24例冻结面板（16个训练划分样本、8个开发划分样本）。这里“训练划分”只是既有数据划分名，**数值求解没有训练过程**。正式64例隐藏测试未解封。原始数据和参考场不随本仓库分发；可核对的源报告路径、摘要和有限汇总见 `benchmarks/historical_summary.json`。
+
+|配置|逐例两场 <1%|训练最大 E / alpha|开发最大 E / alpha|中位 / 最坏秒|
+|---|---:|---:|---:|---:|
+|IF2 z16 t2|24/24|0.5594% / 0.4189%|0.3532% / 0.2530%|2.970 / 4.018|
+|IF2 z32 t2|24/24|0.5059% / 0.2708%|0.3207% / 0.2237%|5.770 / 7.839|
+|marcher z32 t2|23/24|0.5191% / 0.3200%|0.4300% / 1.2225%|13.253 / 13.810|
+
+这些倍数依赖当时的原生/输出网格，不能直接移植为新问题的推荐常数。该面板覆盖有限，参考解自身也有精度预算；不构成“所有输入误差均小于1%”的定理。
+
+## 5. 内存与 XMDS 计时口径
+
+exp_124 对每种配置使用独立子进程，在3个代表案例上记录 `ru_maxrss`。IF2 z16 t2 的平均/最大峰值约0.605/0.605 GiB；marcher z16 t2 为6.762/6.763 GiB，z32 t2 为12.860/12.861 GiB。它们包含当时 Python 环境与输入数据的常驻成本，不等于本轻量发行包的最低内存需求。IF2 内存随细空间、输出和缓存增长，**不是数学意义上的恒定内存**。
+
+exp_125 的一个历史 XMDS 配置：生成编译1.947秒，运行9.449秒；改变一个参数后为1.474秒和9.729秒。该配置与上述面板的网格、驱动和输出坐标不同，且当次没有同精度验收。因此**不将这些时间除以 IF2 的2.970秒并宣称公平加速比**。
+
+## 6. 新问题的验收建议
+
+1. 固定方程、符号、原生驱动和真实输出坐标。
+2. 分别加密空间与时间，检查 E、alpha 两个复场；高梯度下尤其检查相位。
+3. 用更细参考或独立求解器做误差预算，确认驱动插值本身足够精确。
+4. 在相同精度门槛下测量每种方法的运行时间和峰值内存，注明编译是否计入。
+5. 保存失败、参数、版本和日志；不通过时不降低指标口径来制造成功。
+
+本项目目前没有提供任意输入的自动误差估计器、严谨后验界或自适应精度保证。发布测试通过说明被检查的层工作正常，不能替代具体研究的数值收敛验收。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/api/
+
+# Python API 与数据合同
+
+## 统一 GEM 接口
+
+```python
+import numpy as np
+from gem_solvers import GEMParameters, Drive, GEMResult, solve_gem
+
+p = GEMParameters(g=1, N=2, L=1, eta=4, gamma=-0.01)
+nodes = np.linspace(0, 2, 201)
+drive = Drive(nodes, np.exp(-((nodes-0.3)/0.1)**2), np.where(nodes<1, 1., -1.))
+result = solve_gem(p, np.linspace(0,1,41), np.linspace(0,2,81), drive,
+                   method="if2", z_factor=4, t_factor=2)
+```
+
+### `GEMParameters`
+
+|字段|默认值|解释|
+|---|---|---|
+|`g`|2.0|Bloch 方程中光场耦合系数|
+|`N`|50.0|Maxwell 方程中的传播耦合系数；其单位由模型归一化决定|
+|`L`|2.0|严格正的样品长度|
+|`eta`|100.0|线性空间失谐梯度|
+|`gamma`|0.0|`+gamma*alpha` 中的有符号系数；负值对应衰减|
+
+全部参数必须有限。默认值不是推荐精度配置。数据类冻结，方便保留求解参数。
+
+### `Drive(t, Ein, sw)`
+
+三个同长一维数组，`t` 至少两点、从零开始、严格递增；`Ein` 为有限复数，`sw` 为有限实数。构造时复制并设置数组只读，避免后续意外修改驱动。`Ein` 线性插值，`sw` 左常值保持；不要预先把它们压缩到输出网格。
+
+### `solve_gem(params, z, t, drive, *, method="if2", z_factor=4, t_factor=2)`
+
+- `z/t` 至少两点、有限、严格递增，`z[0]=0`，`0<z[-1]≤L`，`t[0]≥0`。
+- 若首个输出时间大于零，仍从物理初态 `t=0` 推进，只返回请求节点。
+- 驱动必须覆盖最后输出时间。每个原始网格区间分别加密，精确保留原始坐标。
+- `method` 仅支持 `if2`、`marcher`；加密因子必须为正整数，不接受布尔值。
+- 返回 `GEMResult`；两后端均不请求 GPU，也不更新任何权重。
+
+### `GEMResult`
+
+`E`、`alpha` 是 `(len(z),len(t))` 的复数组，`z/t` 是实际请求坐标的副本，`method` 是后端名。`elapsed_seconds` 为统一 API 的本次墙钟耗时，含准备与求解，不含用户后处理和保存。
+
+`save(path)` 写入压缩 NPZ，键为 `E, alpha, z, t, method, elapsed_seconds`，已存在时拒绝覆盖；父目录由调用者准备。结果文件**不含全部原生驱动与参数**，要完整复现时必须另存这些输入。
+
+## marcher 低层接口
+
+```python
+from marcher import GEM
+solver = GEM(g=1, N=2, L=1, eta=4, gamma0=-0.01)
+# 低层接口的驱动与请求时间使用同一节点数组；应显式包含全部事件。
+low = solver.solve(nodes, np.linspace(0,1,41), drive.Ein, drive.sw,
+                   z_factor=4, t_factor=2, t_switch=1.0)
+print(low.E.shape, low.alpha.shape)
+```
+
+低层 `GEM.gamma0` 是式中正号的**有符号**系数，其历史默认值 `1e-4` 会产生增长，与统一 API 的 `gamma=0` 默认值不同；建议总是显式指定。
+
+### Λ-GEM 与协议扩展
+
+`marcher.LambdaGEM(g, N, L, eta=0, gamma0=1e-4, gamma_e=2, Delta=0)` 增加光学相干性 $\sigma_{13}$ 与自旋相干性 $\sigma_{12}$：
+
+$$
+\begin{aligned}
+E_z &= iN\sigma_{13},\\
+\dot\sigma_{13}&=-(\gamma_e+\gamma_0/2+i\Delta)\sigma_{13}+igE+i\Omega\sigma_{12},\\
+\dot\sigma_{12}&=-(\gamma_0+i\delta)\sigma_{12}+i\Omega^*\sigma_{13},\\
+\delta(z,t)&=\delta_0+s(t)\eta(z-L/2).
+\end{aligned}
+$$
+
+这里 `gamma0/gamma_e` 在方程前已有**负号**，正值表示衰减；不要套用两能级 GEM 的有符号约定。`solve(..., Omega=complex_array, delta0=value)` 传控制场与均匀双光子失谐。返回 `sigma.shape=(2,nz,nt)`，顺序为 $(\sigma_{13},\sigma_{12})$，`alpha=None`。本项目不把两能级面板的精度保证扩展到 Λ-GEM。
+
+继承 `Protocol` 时覆写 `_coefficients(ctx)` 返回 `A,s,B,C,r`，分别对应形状 `(P,Q,nz,nt)`、`(P,nz,nt)`、`(Q,Q,nz,nt)`、`(Q,P,nz,nt)`、`(Q,nz,nt)`；可覆写 `_u_boundary`、`_v_initial` 以及场数属性。需要阶跃的 `B` 分量用 `_B_step_mask` 声明。数学定义见[式 (3)](methods.md)。
+
+## 观测量的解释限制
+
+低层 `Result.output` 是 `E[-1]`，只有 `z[-1]=L` 时才是严格出口。
+
+- `Result.efficiency`：读出窗口内 $|E|^2$ 的梯形积分与整个给定输入时间范围内 $|E_{in}|^2$ 积分之比。它是**有限窗口能量比**，包含所选窗口和坐标的影响，不是自动扣除背景后的量子存储效率。
+- `echo`：窗口内振幅模的最大值及对应时间。
+- `echo_fidelity(...)`：与时间反转入射曲线的归一化复内积**模，不平方**；按数组点等权内积，不对非均匀采样做积分权重。它不是量子态保真度。
+- `transmission_spectrum` 的历史返回值是末时刻**振幅模**，不是强度透射率；必须自行确认达到稳态。
+
+存在多段不连续读出窗口时，直接在筛选后的坐标上做梯形积分会跨越间隔；应逐连续窗口分别积分。公开保留这些低层历史接口，但论文中的物理量必须明确窗口、权重和归一化。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/xmds/
+
+# XMDS2：生成、编译、运行与读取
+
+XMDS2 是独立的微分方程代码生成工具。本项目不捆绑其编译器或二进制，也不修改原研究工程的参考目录。模板根据这里声明的 GEM 方程重新编写；并非复制外部研究者未明确许可的模板。
+
+## 安装与检查
+
+在提供系统包的 Debian/Ubuntu 上：
+
+```bash
+sudo apt-get update
+sudo apt-get install xmds2 g++ libfftw3-dev
+xmds2 --help
+gem-solvers doctor --json
+python -m pytest -q -m xmds
+```
+
+系统安装需要用户自行授权。Python 求解器不依赖这个步骤；不要用 `pip install xmds2` 代替完整工具链。本地集成已在 XMDS2 3.1.0 上验证；CI 在 Ubuntu 系统包上运行。历史官方[手册](https://xmds2.readthedocs.io/en/latest/)可用于理解输入结构，但其版本较旧，具体能力应以实际安装版本为准。
+
+## 配置与调用
+
+```python
+from gem_solvers import GEMParameters
+from gem_solvers.xmds import XMDSConfig, render_gem, run_gem
+
+config = XMDSConfig(
+    params=GEMParameters(g=1, N=2, L=1, eta=4, gamma=-0.01),
+    duration=2, switch_time=1,
+    pulse_time=0.3, pulse_width=0.1, amplitude=1,
+    lattice=128, z_samples=64,
+    samples_per_stage=40, steps_per_stage=1000, tolerance=1e-8,
+)
+xml = render_gem(config)
+run = run_gem("outputs/new-xmds-case", config, timeout=120)
+fields = run.read()
+print(fields.E.shape, fields.alpha.shape, fields.z[-1])
+print(run.compile_seconds, run.run_seconds)
+```
+
+入射场为实振幅高斯 $u(t)=A\exp[-(t-t_0)^2/\sigma^2]$，直接在生成程序中计算。写入/读出是两个独立积分块，梯度在 `switch_time` 精确切换。时间推进用自适应 ARK89，空间 cross-propagation 用 RK4；`steps_per_stage` 是交给 XMDS 的步数设置，不能解释为自适应运行实际接受的固定步数。`lattice` 须为 `z_samples` 的整数倍。
+
+每个调用使用**新目录**，包含：
+
+|文件|含义|
+|---|---|
+|`gem.xmds`|实际编译输入|
+|`compile.log`|生成与编译输出|
+|`simulation.log`|运行日志|
+|`run.json`|输入 SHA-256、命令、状态、编译/运行耗时|
+|`gem.xsil`|本模板定义的 ASCII 复场数据|
+|生成程序及中间文件|由 XMDS 工具链产生，不提交到仓库|
+
+`timeout` 对编译和运行阶段分别生效，超时后终止本次子进程组并保留日志。报错不会删掉失败目录，也不会覆盖旧结果。
+
+## 真实坐标与输出合同
+
+此模板单个采样组同时输出 `E_real,E_imag,alpha_real,alpha_imag`，读取时按实际 `z,t` 组装 `(nz,nt)` 复数组。读取器不凭 `L/T` 重建坐标、不用 `linspace` 冒充真实节点。
+
+XMDS 的这个空间网格通常**不包含右端点 $L$**；例如默认输出最后一行为 $z=0.984375L$。`fields.E[-1]` 因此不能直接称作 $z=L$ 的出口场。本模板 `initial_sample="no"`，第一条输出时间大于零；统一 Python 后端可在同一组实际坐标上求解，从零初态推进到这些节点。
+
+`read_gem_ascii(path)` 仅支持本模板的内嵌 Text/ASCII XSIL、完整矩形坐标以及指定字段；不承诺读取任意 XMDS 二进制、HDF5、多采样组。单独读取时没有运行耗时，返回 `elapsed_seconds=NaN`；通过 `run.read()` 得到的耗时为编译与运行之和。
+
+## 自定义可信输入
+
+```python
+from gem_solvers.xmds import run_file
+run = run_file("examples/gem.xmds", "outputs/custom-case")
+fields = run.read()
+```
+
+`run_file` 要求输入自包含且 `<name>gem</name>`，不会自动复制外部数据文件。输出读取仍受上述格式限制。XML 可以嵌入任意 C++，应当与运行一段本地源代码一样只使用可信文件；独立工作目录不是安全沙箱。
+
+`examples/gem.xmds` 为可直接编译的静态示例；参数化模板位于 `src/gem_solvers/templates/gem.xmds`。模板中的中文说明以 XML 字符实体输出，兼容部分 XMDS 安装对源文本 ASCII 编码的要求。
+
+## 与 Python 后端比较
+
+XMDS 示例使用解析高斯，Python API 使用原生节点的分段线性曲线，因此对照时需要足够密的原生驱动，并单独检查驱动逼近误差。集成测试用同一实际输出坐标、精确翻转时刻、4001 个驱动节点，检查有耦合情况下两个复场的相对误差。它是一个小规模跨实现一致性检查，不能替代大参数域的精度验收，也不自动建立同精度速度排名。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/agents/
+
+# 给 LLM 和用户自有 agent 的执行指南
+
+本页面是安装与验证合同，不要求特定模型、付费 API 或 agent 平台。先读仓库根目录 `AGENTS.md`、`llms.txt` 和本页。安装只需普通 CPU；不要启动训练、GPU 作业、定时器或云机器。
+
+## 可直接复制的用户请求
+
+> 请从 https://github.com/DeconBear/gem-solvers 安装 GEM Solvers。在新目录克隆，阅读 AGENTS.md 和 llms.txt，创建独立虚拟环境，安装 test 依赖，运行 doctor、非 XMDS 测试和一次小型 IF2 demo。记录版本、命令、退出码与输出路径。不要改全局 Python，不要训练或用 GPU。如果我还要求 XMDS 仿真，请先检查系统工具链；缺失时说明需要安装哪些软件，不擅自 sudo。只根据真实执行结果报告是否成功。
+
+## 最小执行序列
+
+以下命令以 POSIX shell 为例；Windows 的激活语法见[安装页](installation.md)。必须在克隆目录运行测试。
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e '.[test]'
+.venv/bin/gem-solvers doctor --json
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m pytest -q -m 'not xmds'
+.venv/bin/gem-solvers demo --method if2 --output outputs/agent-first.npz
+```
+
+成功标准：安装命令退出码为零，doctor 可导入依赖，测试完成且无失败，demo 保存有限复数组。测试数可能随版本变化，**不能硬编码一个旧数字来伪造验收**。若相同文件已存在，保留文件并改用新的输出名。
+
+## 可选 XMDS 验收
+
+```bash
+xmds2 --help
+.venv/bin/python -m pytest -q -m xmds
+.venv/bin/gem-solvers xmds-example --directory outputs/agent-xmds-first
+```
+
+只有实际安装工具链并运行成功才能称为 XMDS 已验收。因依赖缺失而 skipped 与 passed 不同。查看 `compile.log`、`simulation.log`、`run.json` 定位失败；不要删除日志后重复声称成功。不要把随机网上的 XMDS XML 当成纯配置：里面可以含可执行 C++。
+
+## 不得改写的科学语义
+
+- 两能级 `GEMParameters.gamma`、低层 `GEM.gamma0` 是正号项的系数；衰减时传负值。`LambdaGEM.gamma0` 的方程自带负号，不能混淆。
+- 输入复相位必须保留，验证 E 和 alpha 两个复场，不能改成只比较强度来让误差变小。
+- 原生驱动与输出采样分开。事件点不能丢失，不能把解析高斯和粗采样折线称作完全相同的输入。
+- 使用真实坐标。XMDS 最后一行通常不等于出口 $L$。
+- 默认网格、测试通过和历史24例通过，都不等于任意新问题达到1%。
+- 不读取隐藏研究数据，不扫描用户密钥，不把结果上传第三方。普通安装不需要账号令牌。
+
+## 排错顺序与交付
+
+先检查解释器/包版本，再检查输入合同与坐标，再查看失败日志，最后才考虑修改代码。改动应最小化并增加有意义的回归测试。代理汇报至少包含：来源 URL 与 commit、虚拟环境位置、实际通过/跳过/失败情况、结果文件路径、仍未验证的外部组件。不把“文件已生成”替代“计算已通过”。
+
+[llms.txt](llms.txt) 提供入口；[llms-full.txt](llms-full.txt) 是这些文档的纯文本合并版，可无需 JavaScript 阅读。
+
+
+---
+来源：https://deconbear.github.io/gem-solvers/provenance/
+
+# 来源、许可证与引用
+
+## 代码来源与提取边界
+
+数值内核提取自作者的 `DeconBear/GEM_PINN` 研究工程，基点为 `c117869`。源文件及其 SHA-256 摘要记录在本仓库 `benchmarks/source_manifest.json`；发布版的文件摘要另列为 `distribution_sha256`，区分源文件与接口整理后的文件。
+
+- marcher：`core.py`、`protocols.py`、`observables.py`；保留算法和物理语义，整理包入口与过期说明。
+- IF2：`physics_operator.py` 与 `physics_operator_cached.py`；作为内部模块提取，去除对研究包路径的导入依赖。
+- 新增：统一公开 API、安装元数据、XMDS 接口与自编模板、文档、CI、独立验证脚本。
+- 未带入：FNO/PINN、训练权重、训练数据、隐藏测试标签、后台任务、原研究参考目录、外部模板或编译后的程序。
+
+新仓库可以在没有 `GEM_PINN` 的机器上安装运行。研究工程未来变化不会自动改变本发行版。没有必要复制整个研究目录来安装这个数值工具。
+
+## 历史证据与再现边界
+
+`benchmarks/historical_summary.json` 是源实验 exp_123、exp_124、exp_125 的有限汇总，含源路径和报告摘要。原始冻结面板及其完整参考数据不随本仓库发布，因此这些历史数字不能由新仓库单独完整重跑。新仓库能够自包含复现的是 `scripts/validate_public.py` 与 `tests/` 的解析/制造解及小型跨实现检查。
+
+GitHub 上的源工程若权限变化，不影响本包运行。引用历史结果时需要保留这个数据可得性边界，而不能把链接存在当作公开数据齐全。
+
+## 许可
+
+本项目以 MIT 发布，见仓库 `LICENSE`。外部 NumPy、SciPy、Matplotlib、MkDocs 和 XMDS2 分别遵循其许可证；不捆绑这些项目的源码或二进制，不用本项目 MIT 重新许可它们。XMDS 输入模板为按声明方程重新编写的示例；不是对原物理参考目录模板的重新许可。
+
+## 如何引用与复现实验
+
+引用本软件可使用根目录 `CITATION.cff`，同时记录准确 commit 或发行版本。当前不虚构 DOI 或同行评审状态。论文方法至少应写明：方程与符号、两复场输出、单位、参数、原生驱动、真实坐标、空间/时间加密、误差归一化、独立参考精度、软硬件版本、线程数及是否计入编译。
+
+相关外部方法资料：
+
+1. G. R. Dennis, J. J. Hope, M. T. Johnsson, *XMDS2: Fast, scalable simulation of coupled stochastic partial differential equations*, Computer Physics Communications **184**, 201–208 (2013), [DOI](https://doi.org/10.1016/j.cpc.2012.08.016)。[XMDS 官方文档](https://xmds2.readthedocs.io/en/latest/)也给出该引用；文档镜像较旧，不能据此判断当前版本。
+2. [SciPy `solve_banded` 官方文档](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)：IF2 实现使用的带状矩阵存储与求解接口。
+3. [GitHub Pages 自定义工作流文档](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)：本站的构建和发布方式。
+
+[方法页](methods.md)中的推导解释本仓库实际代码；与原子物理模型对应的物理论文应由具体研究按所用近似另行引用。我们不将软件验证等同于真实器件实验验证。
