@@ -18,8 +18,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install '.[test]'
       - run: python -m pytest -q -m 'not xmds'
-      - run: gem-solvers doctor --json
-      - run: gem-solvers demo --output outputs/ci.npz
+      - run: causalwave doctor --json
+      - run: causalwave demo --output outputs/ci.npz
+      - run: python examples/linear_system.py
       - run: python -m build
   xmds:
     runs-on: ubuntu-24.04

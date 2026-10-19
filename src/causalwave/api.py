@@ -16,8 +16,16 @@ class GEMParameters:
     gamma: float = 0.0
 
     def __post_init__(self):
-        if not np.isfinite(list(asdict(self).values())).all() or self.L <= 0:
-            raise ValueError("参数必须有限，L必须为正")
+        for name, value in asdict(self).items():
+            value = np.asarray(value)
+            if value.ndim != 0 or (np.iscomplexobj(value) and value.imag != 0):
+                raise ValueError(f"{name} 必须为有限实标量")
+            value = float(value.real)
+            if not np.isfinite(value):
+                raise ValueError(f"{name} 必须为有限实标量")
+            object.__setattr__(self, name, value)
+        if self.L <= 0:
+            raise ValueError("L必须为正")
 
     def _legacy(self):
         p = asdict(self)

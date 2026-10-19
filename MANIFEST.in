@@ -1,4 +1,4 @@
-include AGENTS.md CONTRIBUTING.md CITATION.cff llms.txt mkdocs.yml
+include AGENTS.md CONTRIBUTING.md CITATION.cff CHANGELOG.md llms.txt mkdocs.yml
 recursive-include docs *.md *.txt *.js *.css *.png
 recursive-include examples *.py *.xmds
 recursive-include scripts *.py

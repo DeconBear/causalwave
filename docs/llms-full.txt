@@ -1,16 +1,18 @@
-# GEM Solvers 完整说明
+# CausalWave 完整说明
 
 由 scripts/build_llms.py 生成；相对链接按来源页面解析。
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/
+来源：https://deconbear.github.io/causalwave/
 
-# GEM Solvers：复场、因果推进与可复现验证
+# CausalWave：复场、因果推进与可复现验证
 
-**不训练网络，直接求解梯度回波记忆（GEM）的线性场方程。**
+**线性耦合传播方程的因果数值求解工具，无需训练或 GPU。**
 
-本项目把两个独立数值后端整理成可安装的 Python 包：marcher 在时空网格上解局部耦合块系统；IF2 先消去光场的空间传播，再用指数权重推进原子相干性。两者都输出完整的复数 $E(z,t)$ 和 $\alpha(z,t)$，而非只拟合光强或输出一个存储效率。
+marcher 在时空网格上解一般线性耦合块系统 $U_z=AV+s,\ V_t=BV+CU+r$；IF2 针对两能级 GEM 先消去光场的空间传播，再用指数权重推进原子相干性。GEM 应用的两个后端都输出完整的复数 $E(z,t)$ 和 $\alpha(z,t)$。通用 marcher 返回全部 $U,V$ 分量，但当前应用验证和历史性能证据以 GEM 为主。
+
+项目采用已有梯形与指数积分方法，不宣称发明这两类算法。软件定位、方法先例和替代工具见[参考文献与相关软件](references.md)。名称中的 Wave 不代表对任意波动方程的支持。
 
 ## 从哪里开始
 
@@ -18,6 +20,7 @@
 - **理解算法：** [模型、离散公式与复杂度](methods.md) → [收敛证据和适用边界](validation.md)。
 - **交给自己的 agent：** [可执行安装合同](agents.md)、[llms.txt](llms.txt)、[合并的纯文本说明](llms-full.txt)。
 - **与外部求解器对照：** [XMDS2 的输入生成、运行和读取](xmds.md)。
+- **求解一般线性系统：** [通用 API 与解析示例](api.md#linear-system)。
 
 |后端|核心方法|内部存储|可定制范围|
 |---|---|---|---|
@@ -37,7 +40,7 @@
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/installation/
+来源：https://deconbear.github.io/causalwave/installation/
 
 # 安装与首个算例
 
@@ -46,20 +49,22 @@
 Python 3.10 及以上；NumPy 2.0 及以上；SciPy 1.13.1 及以上。NumPy 2.0 下限来自观测量接口对 `np.trapezoid` 的使用。无 PyTorch、CUDA、训练权重、云服务或 API 密钥依赖。XMDS2 是单独可选的系统工具链。
 
 ```bash
-git clone https://github.com/DeconBear/gem-solvers.git
-cd gem-solvers
+git clone https://github.com/DeconBear/causalwave.git
+cd causalwave
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e '.[test]'
-gem-solvers doctor --json
+causalwave doctor --json
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q -m 'not xmds'
-gem-solvers demo --method if2 --output outputs/first.npz
+causalwave demo --method if2 --output outputs/first.npz
 ```
 
 目前没有发布 PyPI 版本；请使用上述 GitHub 地址。Windows PowerShell 使用 `.venv\Scripts\Activate.ps1` 激活环境。CPU 共享时用 `OPENBLAS_NUM_THREADS=1` 和 `OMP_NUM_THREADS=1` 限制库线程数；它们不限制外部 XMDS 程序的所有潜在并行配置。
 
 ## 检查结果
+
+0.2.0 起 Python 导入使用 `causalwave`，命令行使用 `causalwave`；旧 `gem_solvers` 导入不再提供。建议在新克隆目录建立虚拟环境；低层 `from marcher import ...` 保留。
 
 `doctor` 输出当前 Python、NumPy、SciPy、包版本以及可选编译器路径。`demo` 输出两个复场的形状、耗时和保存位置；它是有限网格的仿真，不是训练。已有结果文件拒绝覆盖，请换新文件名。读取：
 
@@ -76,6 +81,7 @@ with np.load("outputs/first.npz") as data:
 
 ```bash
 python -m pip install -e '.[test,docs,plot]'
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python examples/linear_system.py
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/validate_public.py
 python scripts/build_llms.py
 python -m mkdocs build --strict
@@ -98,15 +104,17 @@ python -m build
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/methods/
+来源：https://deconbear.github.io/causalwave/methods/
 
-# 梯度回波记忆的两种因果数值离散
+# 线性因果耦合传播：marcher 与 GEM 专用 IF2
 
 ## 摘要
 
-本文说明 `gem-solvers` 中 marcher 与 IF2 的数学模型、离散方程、实现映射和误差来源。研究对象是一维弱场线性 GEM：光场沿空间单向传播，原子相干性沿时间演化。marcher 保留两个场，在每个网格点联立求解梯形离散所得的小型复线性系统；IF2 用空间累积积分消去光场，精确处理区间内的局部对角相位，再对耦合项作二阶端点指数拟合。空间 Volterra 结构允许 IF2 每个时间步只解一个下双对角系统。这里的“精确”仅指指定离散式内的局部指数与线性代数求解，不意味着完整 PDE 的精确解。
+本文说明 CausalWave 的数学模型、离散方程、实现映射和误差来源。底层 marcher 面向式 (3) 所定义的一般线性耦合系统：一组场沿空间单向传播，另一组场沿时间演化；它在每个网格点联立求解梯形离散所得的小型复线性系统。当前公开接口与主要数值验证围绕一维弱场 GEM 展开。IF2 则是这个 GEM 模型的专用后端：用空间累积积分消去光场，精确处理区间内的局部对角相位，再对耦合项作二阶端点指数拟合。空间 Volterra 结构允许 IF2 每个时间步只解一个下双对角系统。这里的“精确”仅指指定离散式内的局部指数与线性代数求解，不意味着完整 PDE 的精确解。
 
-**关键词：** 梯度回波记忆；复振幅；Volterra 积分；梯形法；指数拟合；因果推进。
+梯形离散、指数求积与 Volterra 积分都是已有数值方法。CausalWave 提供这些方法的结构化实现、问题接口和数值验证，不把基础算法称为本项目原创。[Gourlay（1970）](references.md#gourlay1970)和[Hochbruck 与 Ostermann（2010）](references.md#hochbruck2010)给出下文所用方法的直接背景；具体对应关系分别见 §2.4 与 §3.2。
+
+**关键词：** 线性耦合传播；复振幅；Volterra 积分；梯形法；指数拟合；梯度回波记忆。
 
 ## 1. 模型、边界与适用范围
 
@@ -125,6 +133,14 @@ $$ E(0,t)=u(t),\qquad \alpha(z,0)=0. \tag{2} $$
 $g,N,\eta,L$ 为实参数；它们必须与坐标、入射场采用一致的单位或无量纲化。代码不进行自动单位换算。$\gamma$ 是式 (1) 的有符号系数：退相干写作 $\gamma=-\Gamma$、$\Gamma\geq0$；输入正值将产生增长，不能在报告中称作衰减。
 
 常见 GEM 控制为写入段 $s=+1$、读出段 $s=-1$。这里允许任意有限的实值分段常数 $s(t)$ 和复数分段线性 $u(t)$。这是弱场、单向传播的线性模型；不包含布居饱和、反向传播、扩散或横向衍射。低层 marcher 另有三能级 `LambdaGEM`，并不意味着本页 IF2 已推广到该体系。
+
+GEM 的两能级背景可参阅[Hétet 等（2008）](references.md#hetet2008)，Raman GEM 的模型与适用近似可参阅[Hosseini 等（2012）](references.md#hosseini2012)。本页直接声明软件求解的方程；这些物理参考不是参数单位、衰减符号或实际器件性能已经核对的替代品。三能级 `LambdaGEM` 保留光学极化与基态相干性，弱场 EIT 的背景见[Fleischhauer 与 Lukin（2000）](references.md#fleischhauer2000)；它不是包含布居饱和的完整密度矩阵模型。
+
+| 层次 | 已提供能力 | 验证与适用边界 |
+|---|---|---|
+| `marcher.march_system` 与 `Protocol` | 式 (3) 的线性多场、已知时空系数及源项 | 有制造解、边界和小块线性代数检查；每个新物理模型仍需独立核对 |
+| `GEM` 与 `LambdaGEM` | 两能级 GEM 和线性三能级协议；后者可设置 EIT 参数 | 包含两能级收敛及三能级解析透射检查；不等于任意协议已充分验收 |
+| `causalwave.solve_gem` 的 IF2 后端 | 式 (1) 的两复场、分段驱动、零初始相干性 | 没有通用多场 IF2、完整 Lindblad、双向或多维传播接口 |
 
 ### 1.1 原生驱动与真实事件
 
@@ -182,9 +198,15 @@ $B_{ij}^{-}$ 对声明为阶跃的分量取当前时间区间内部的左侧值�
 
 固定 $P,Q$ 时，工作量与内部格点数 $n_z n_t$ 成正比；一般块求解另有约 $(P+Q)^3$ 的局部代价。当前实现保留细时空系数和状态，内存随 $n_z n_t$ 增长。这是大加密倍数下需要注意的主要成本。
 
+### 2.4 与既有梯形格式的关系
+
+空间和时间方向各用一次端点梯形公式，是式 (4)–(6) 的基本构造。在标量、常数 $A,C$、$B=0$ 且无源项的子类中，消去 $V$ 可得 $U_{zt}=ACU$；同样消去离散未知量后，得到四角平均的 Goursat 梯形差分。这一子类与[Gourlay（1970）§2](https://doi.org/10.1090/S0025-5718-1970-0275680-3)讨论的经典 Goursat 梯形构造对应。
+
+这是对本实现的代数归类，不表示该文直接给出了本项目的所有变系数、多场或事件处理代码。对角线推进利用的是网格依赖关系，小型块求解和向量化属于实现选择。本项目不把这些特征单独称作新数值原理，也不据此把一般格式直接等同于所有被称作 Keller box 的方法。
+
 ## 3. IF2：空间消元与二阶指数拟合
 
-这里 IF2 是本项目对以下二阶指数拟合格式的简称，**不是对所有文献中“IF2”命名方法的等同声明**。
+这里 IF2 是本项目对以下二阶指数拟合格式的简称，**不是对所有文献中“IF2”命名方法的等同声明**，也不是一个新的算法优先权主张。当前实现的空间消元和系数构造专用于式 (1)。
 
 ### 3.1 用 Volterra 积分消去光场
 
@@ -218,6 +240,8 @@ $$
 
 $$ R=e^{hD},\qquad w_0=h[\varphi_1(hD)-\varphi_2(hD)],\qquad w_1=h\varphi_2(hD). \tag{11} $$
 
+这些权重是已有指数梯形求积的端点权重。[Hochbruck 与 Ostermann（2010），§2.2、Example 2.6](https://na.math.kit.edu/download/papers/acta-final.pdf)对节点 $0,1$ 给出 $\varphi_1-\varphi_2$ 与 $\varphi_2$；取其线性算子为 $-D$，即得到式 (11)。在本问题中，右端耦合依赖未知的 $a_{n+1}$，因此还要解式 (12)–(13) 的隐式系统。文献中不同的积分因子、ETD 或 IIF 方法未必使用相同权重，不能仅凭简称移用它们的稳定性结论。
+
 实现对小 $|hD|$ 使用级数，避免相近数相减导致的消减误差。更新式为
 
 $$
@@ -237,6 +261,8 @@ $$
 
 这就是下双对角系统。实现用 SciPy `solve_banded((1, 0), ...)`，随后恢复 $a_{n+1}=b-qp$，重新累积积分并按式 (7) 恢复光场。重新计算积分使下一步状态与累积梯形算子保持一致；不是额外的训练或拟合。
 
+式 (13) 的局部递推来自这里特定的空间累积梯形结构。它解释了当前实现为什么不需要存储稠密 $Q$；不意味着一般 Volterra 核、多场耦合或任意非线性系统也能直接使用同一个双对角求解器。
+
 ### 3.4 “指数处理”解决和没有解决的部分
 
 - 区间内局部对角相位 $e^{hD}$ 被直接计算，减少普通梯形推进对高频局部相位的时间色散。
@@ -252,22 +278,24 @@ $$
 
 ## 4. 两个实现的比较边界
 
-两者求解相同的两能级模型，但误差常数、内存布局和相位处理不同。IF2 的空间消元利用了 GEM 特定的 Volterra 结构；marcher 的一般块接口更易表达多个局部演化场。不能只用代码行数、一个示例的速度或图形相似来判断哪个方法“更准确”。
+通过 `solve_gem` 使用时，两者求解相同的两能级模型，但误差常数、内存布局和相位处理不同。IF2 的当前实现利用了该 GEM 模型的 Volterra 结构；marcher 的一般块接口可表达多个局部演化场。接口能表达一个模型，与该模型已通过物理验证，是两个不同结论。不能只用代码行数、一个示例的速度或图形相似来判断哪个方法“更准确”。
 
 公平比较应固定：物理参数、原生驱动、输出坐标、复场误差定义、参考精度、线程数、硬件和是否计入编译。先为每个后端找满足相同精度门槛的网格，再报告时间与峰值内存。当前仓库的[验证页面](validation.md)把自包含解析证据与历史面板分开说明。
 
 ## 5. 实现与参考
 
 - 式 (4)–(6)：`src/marcher/core.py` 的 `_solve_block` 与 `march_system`。
-- 式 (11)：`src/gem_solvers/_if2_reference.py` 的 `_exponential_weights`。
-- 式 (12)–(13)：`src/gem_solvers/_if2.py` 的 `solve_gem_cached`。
-- 统一驱动/坐标合同：`src/gem_solvers/api.py`。
+- 式 (11)：`src/causalwave/_if2_reference.py` 的 `_exponential_weights`。
+- 式 (12)–(13)：`src/causalwave/_if2.py` 的 `solve_gem_cached`。
+- 统一驱动/坐标合同：`src/causalwave/api.py`。
 
-带状矩阵存储遵循 [SciPy solve_banded 官方定义](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)。XMDS2 是独立工具链，方法背景见 [Dennis 等，Computer Physics Communications 184, 201–208 (2013)](https://doi.org/10.1016/j.cpc.2012.08.016)。本页的离散推导以随仓库发布的实现为依据；不将这些常见数值构造宣称为新的物理模型或新的算法发明。
+带状矩阵存储遵循 [SciPy solve_banded 官方定义](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)。XMDS2 是独立工具链，见[Dennis 等（2013）](references.md#xmds2013)。完整书目信息、物理背景和 CoOMBE、clerq、mbsolve 等相邻软件的范围见[参考文献与相关软件](references.md)。
+
+本页的推导对应随仓库发布的离散实现；[验证页](validation.md)记录实际通过的检查与数据边界。推导、实现测试和真实器件验证各自回答不同问题，不应互相替代。
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/validation/
+来源：https://deconbear.github.io/causalwave/validation/
 
 # 验证、成本与局限
 
@@ -355,15 +383,23 @@ exp_125 的一个历史 XMDS 配置：生成编译1.947秒，运行9.449秒；�
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/api/
+来源：https://deconbear.github.io/causalwave/api/
 
 # Python API 与数据合同
+
+## 通用线性块接口 {#linear-system}
+
+`from causalwave import march_system` 与 `from marcher import march_system` 指向同一内核。它求解 $U_z=AV+s,\ V_t=BV+CU+r$；系数必须预先给定，允许依赖时空，不允许依赖未知场形成非线性。完整示例在仓库 `examples/linear_system.py`，可直接运行并与解析解比较。
+
+传入 `z, t, u_bc, v_ic, A_coef, s_coef, B_coef, C_coef, r_coef`。边界 `u_bc` 形状为 `(P, nt)`，初态 `v_ic` 为 `(Q, nz)`；系数形状依次为 `(P,Q,nz,nt)`、`(P,nz,nt)`、`(Q,Q,nz,nt)`、`(Q,P,nz,nt)`、`(Q,nz,nt)`。返回 `U.shape=(P,nz,nt)`、`V.shape=(Q,nz,nt)`，保留所有复数分量。
+
+建议显式提供从零开始的空间与时间节点。低层接口对首个时间采样之前的驱动/系数采用常数延拓，不能代替丢失的历史输入。只有 `B_step_mask` 选中的 B 分量按时间左常值保持；其他系数与边界按线性插值处理，不能由“包含事件节点”推断所有系数都支持跳变。
 
 ## 统一 GEM 接口
 
 ```python
 import numpy as np
-from gem_solvers import GEMParameters, Drive, GEMResult, solve_gem
+from causalwave import GEMParameters, Drive, GEMResult, solve_gem
 
 p = GEMParameters(g=1, N=2, L=1, eta=4, gamma=-0.01)
 nodes = np.linspace(0, 2, 201)
@@ -382,7 +418,7 @@ result = solve_gem(p, np.linspace(0,1,41), np.linspace(0,2,81), drive,
 |`eta`|100.0|线性空间失谐梯度|
 |`gamma`|0.0|`+gamma*alpha` 中的有符号系数；负值对应衰减|
 
-全部参数必须有限。默认值不是推荐精度配置。数据类冻结，方便保留求解参数。
+全部参数必须为有限实标量，不接受非零虚部；默认值不是推荐精度配置。数据类冻结，方便保留求解参数。
 
 ### `Drive(t, Ein, sw)`
 
@@ -415,6 +451,8 @@ print(low.E.shape, low.alpha.shape)
 
 低层 `GEM.gamma0` 是式中正号的**有符号**系数，其历史默认值 `1e-4` 会产生增长，与统一 API 的 `gamma=0` 默认值不同；建议总是显式指定。
 
+构造参数不能在 `solve(..., eta=...)` 等调用中覆盖；需要改变参数时重新构造协议对象。`LambdaGEM` 的额外控制 `Omega` 和 `delta0` 按下文传入。
+
 ### Λ-GEM 与协议扩展
 
 `marcher.LambdaGEM(g, N, L, eta=0, gamma0=1e-4, gamma_e=2, Delta=0)` 增加光学相干性 $\sigma_{13}$ 与自旋相干性 $\sigma_{12}$：
@@ -432,6 +470,8 @@ $$
 
 继承 `Protocol` 时覆写 `_coefficients(ctx)` 返回 `A,s,B,C,r`，分别对应形状 `(P,Q,nz,nt)`、`(P,nz,nt)`、`(Q,Q,nz,nt)`、`(Q,P,nz,nt)`、`(Q,nz,nt)`；可覆写 `_u_boundary`、`_v_initial` 以及场数属性。需要阶跃的 `B` 分量用 `_B_step_mask` 声明。数学定义见[式 (3)](methods.md)。
 
+`Protocol._pack` 默认仅将 `U[0]` 放进 `Result.E`；需要多个传播场或自定义演化场输出时，应覆写 `_pack`，或直接调用 `march_system` 取得全部 U/V。不能只修改场数属性便认为所有分量都会保留在 `Result` 中。
+
 ## 观测量的解释限制
 
 低层 `Result.output` 是 `E[-1]`，只有 `z[-1]=L` 时才是严格出口。
@@ -441,11 +481,11 @@ $$
 - `echo_fidelity(...)`：与时间反转入射曲线的归一化复内积**模，不平方**；按数组点等权内积，不对非均匀采样做积分权重。它不是量子态保真度。
 - `transmission_spectrum` 的历史返回值是末时刻**振幅模**，不是强度透射率；必须自行确认达到稳态。
 
-存在多段不连续读出窗口时，直接在筛选后的坐标上做梯形积分会跨越间隔；应逐连续窗口分别积分。公开保留这些低层历史接口，但论文中的物理量必须明确窗口、权重和归一化。
+多段不连续读出窗口按原网格中连续为 True 的各段分别做梯形积分，不跨越未选择的间隔；单点或空窗口贡献为零。窗口边缘以选中的采样节点为准，不额外猜测节点间的切换时刻。论文中的物理量必须明确窗口、权重和归一化。
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/xmds/
+来源：https://deconbear.github.io/causalwave/xmds/
 
 # XMDS2：生成、编译、运行与读取
 
@@ -459,7 +499,7 @@ XMDS2 是独立的微分方程代码生成工具。本项目不捆绑其编译�
 sudo apt-get update
 sudo apt-get install xmds2 g++ libfftw3-dev
 xmds2 --help
-gem-solvers doctor --json
+causalwave doctor --json
 python -m pytest -q -m xmds
 ```
 
@@ -468,8 +508,8 @@ python -m pytest -q -m xmds
 ## 配置与调用
 
 ```python
-from gem_solvers import GEMParameters
-from gem_solvers.xmds import XMDSConfig, render_gem, run_gem
+from causalwave import GEMParameters
+from causalwave.xmds import XMDSConfig, render_gem, run_gem
 
 config = XMDSConfig(
     params=GEMParameters(g=1, N=2, L=1, eta=4, gamma=-0.01),
@@ -498,7 +538,7 @@ print(run.compile_seconds, run.run_seconds)
 |`gem.xsil`|本模板定义的 ASCII 复场数据|
 |生成程序及中间文件|由 XMDS 工具链产生，不提交到仓库|
 
-`timeout` 对编译和运行阶段分别生效，超时后终止本次子进程组并保留日志。报错不会删掉失败目录，也不会覆盖旧结果。
+`timeout` 对编译和运行阶段分别生效；超时、Ctrl-C 或等待异常都会终止并回收本次子进程，POSIX 系统同时终止其独立进程组。日志和源文件保留，Ctrl-C 或 `SystemExit` 在 `run.json` 中记为 `INTERRUPTED`，其他异常记为 `FAILED`，随后继续抛出原异常（超时转为 `TimeoutError`）。报错不会删掉失败目录，也不会覆盖旧结果。
 
 ## 真实坐标与输出合同
 
@@ -511,14 +551,14 @@ XMDS 的这个空间网格通常**不包含右端点 $L$**；例如默认输出�
 ## 自定义可信输入
 
 ```python
-from gem_solvers.xmds import run_file
+from causalwave.xmds import run_file
 run = run_file("examples/gem.xmds", "outputs/custom-case")
 fields = run.read()
 ```
 
 `run_file` 要求输入自包含且 `<name>gem</name>`，不会自动复制外部数据文件。输出读取仍受上述格式限制。XML 可以嵌入任意 C++，应当与运行一段本地源代码一样只使用可信文件；独立工作目录不是安全沙箱。
 
-`examples/gem.xmds` 为可直接编译的静态示例；参数化模板位于 `src/gem_solvers/templates/gem.xmds`。模板中的中文说明以 XML 字符实体输出，兼容部分 XMDS 安装对源文本 ASCII 编码的要求。
+`examples/gem.xmds` 为可直接编译的静态示例；参数化模板位于 `src/causalwave/templates/gem.xmds`。模板中的中文说明以 XML 字符实体输出，兼容部分 XMDS 安装对源文本 ASCII 编码的要求。
 
 ## 与 Python 后端比较
 
@@ -526,7 +566,7 @@ XMDS 示例使用解析高斯，Python API 使用原生节点的分段线性曲�
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/agents/
+来源：https://deconbear.github.io/causalwave/agents/
 
 # 给 LLM 和用户自有 agent 的执行指南
 
@@ -534,7 +574,7 @@ XMDS 示例使用解析高斯，Python API 使用原生节点的分段线性曲�
 
 ## 可直接复制的用户请求
 
-> 请从 https://github.com/DeconBear/gem-solvers 安装 GEM Solvers。在新目录克隆，阅读 AGENTS.md 和 llms.txt，创建独立虚拟环境，安装 test 依赖，运行 doctor、非 XMDS 测试和一次小型 IF2 demo。记录版本、命令、退出码与输出路径。不要改全局 Python，不要训练或用 GPU。如果我还要求 XMDS 仿真，请先检查系统工具链；缺失时说明需要安装哪些软件，不擅自 sudo。只根据真实执行结果报告是否成功。
+> 请从 https://github.com/DeconBear/causalwave 安装 CausalWave。在新目录克隆，阅读 AGENTS.md 和 llms.txt，创建独立虚拟环境，安装 test 依赖，运行 doctor、非 XMDS 测试和一次小型 IF2 demo。记录版本、命令、退出码与输出路径。不要改全局 Python，不要训练或用 GPU。如果我还要求 XMDS 仿真，请先检查系统工具链；缺失时说明需要安装哪些软件，不擅自 sudo。只根据真实执行结果报告是否成功。
 
 ## 最小执行序列
 
@@ -544,9 +584,9 @@ XMDS 示例使用解析高斯，Python API 使用原生节点的分段线性曲�
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e '.[test]'
-.venv/bin/gem-solvers doctor --json
+.venv/bin/causalwave doctor --json
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m pytest -q -m 'not xmds'
-.venv/bin/gem-solvers demo --method if2 --output outputs/agent-first.npz
+.venv/bin/causalwave demo --method if2 --output outputs/agent-first.npz
 ```
 
 成功标准：安装命令退出码为零，doctor 可导入依赖，测试完成且无失败，demo 保存有限复数组。测试数可能随版本变化，**不能硬编码一个旧数字来伪造验收**。若相同文件已存在，保留文件并改用新的输出名。
@@ -556,7 +596,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m pytest -q -m 'not x
 ```bash
 xmds2 --help
 .venv/bin/python -m pytest -q -m xmds
-.venv/bin/gem-solvers xmds-example --directory outputs/agent-xmds-first
+.venv/bin/causalwave xmds-example --directory outputs/agent-xmds-first
 ```
 
 只有实际安装工具链并运行成功才能称为 XMDS 已验收。因依赖缺失而 skipped 与 passed 不同。查看 `compile.log`、`simulation.log`、`run.json` 定位失败；不要删除日志后重复声称成功。不要把随机网上的 XMDS XML 当成纯配置：里面可以含可执行 C++。
@@ -578,13 +618,23 @@ xmds2 --help
 
 
 ---
-来源：https://deconbear.github.io/gem-solvers/provenance/
+来源：https://deconbear.github.io/causalwave/provenance/
 
 # 来源、许可证与引用
+
+## 项目定位与方法归属
+
+CausalWave 是线性因果耦合传播的数值工具。其底层 marcher 接口可表达空间单向传播场与时间演化场之间的线性耦合；目前打包的物理协议与主要验证集中在 GEM 和线性三能级模型。IF2 仍是两能级 GEM 的专用实现。更一般的名称没有扩展代码实际支持的方程、边界条件或验证范围。
+
+本项目不声称发明梯形法、指数积分或 Volterra 求积。marcher 的常系数标量子类可对应到经典 Goursat 梯形格式；IF2 的端点指数权重与既有指数梯形求积一致。具体推导对应关系见[方法页](methods.md)，原始来源见[Gourlay（1970）](references.md#gourlay1970)与[Hochbruck、Ostermann（2010）](references.md#hochbruck2010)。这些对应关系不等于证明整个软件与某一已有实现逐行相同，也不构成算法组合的原创性认证。
+
+本项目提供的是代码整理、方程接口、事件与坐标处理、结构化数值求解和可复现验证。评价这些工作应依据代码、测试与同问题的实测结果；不把软件开发贡献混同于基础数值方法的发明。
 
 ## 代码来源与提取边界
 
 数值内核提取自作者的 `DeconBear/GEM_PINN` 研究工程，基点为 `c117869`。源文件及其 SHA-256 摘要记录在本仓库 `benchmarks/source_manifest.json`；发布版的文件摘要另列为 `distribution_sha256`，区分源文件与接口整理后的文件。
+
+0.2.0 的更名与发布审查还修复了输入校验、无效参数覆盖、多段窗口积分及 XMDS 中断清理；这些变化记录在版本历史中。源摘要保持不变，发行摘要对应当前文件，不能将二者混用。
 
 - marcher：`core.py`、`protocols.py`、`observables.py`；保留算法和物理语义，整理包入口与过期说明。
 - IF2：`physics_operator.py` 与 `physics_operator_cached.py`；作为内部模块提取，去除对研究包路径的导入依赖。
@@ -607,10 +657,94 @@ GitHub 上的源工程若权限变化，不影响本包运行。引用历史结�
 
 引用本软件可使用根目录 `CITATION.cff`，同时记录准确 commit 或发行版本。当前不虚构 DOI 或同行评审状态。论文方法至少应写明：方程与符号、两复场输出、单位、参数、原生驱动、真实坐标、空间/时间加密、误差归一化、独立参考精度、软硬件版本、线程数及是否计入编译。
 
-相关外部方法资料：
+引用软件版本、基础数值方法和物理模型，分别说明复现对象、方法来源与适用假设。建议按实际使用内容选择[参考文献页](references.md)中的条目，而不是把所有相关项目都列为依赖或性能基准：
 
-1. G. R. Dennis, J. J. Hope, M. T. Johnsson, *XMDS2: Fast, scalable simulation of coupled stochastic partial differential equations*, Computer Physics Communications **184**, 201–208 (2013), [DOI](https://doi.org/10.1016/j.cpc.2012.08.016)。[XMDS 官方文档](https://xmds2.readthedocs.io/en/latest/)也给出该引用；文档镜像较旧，不能据此判断当前版本。
-2. [SciPy `solve_banded` 官方文档](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)：IF2 实现使用的带状矩阵存储与求解接口。
-3. [GitHub Pages 自定义工作流文档](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)：本站的构建和发布方式。
+- 使用两种 Python 后端时，记录 CausalWave 版本及对应的梯形/指数求积来源。
+- 使用 XMDS2 生成或运行参考结果时，另引 [Dennis 等（2013）](references.md#xmds2013)，并记录编译器、XMDS2 版本和输入文件。
+- 将结果解释为 GEM 或 EIT 时，引用对应物理模型，并明确弱场、单向传播和可能的绝热消除近似。
+- CoOMBE、clerq 与 mbsolve 是相邻软件，并非本项目内置后端；未进行同精度比较时，不宣称本项目优于它们。
 
-[方法页](methods.md)中的推导解释本仓库实际代码；与原子物理模型对应的物理论文应由具体研究按所用近似另行引用。我们不将软件验证等同于真实器件实验验证。
+实现接口遵循 [SciPy `solve_banded` 官方文档](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)；站点发布机制见 [GitHub Pages 自定义工作流文档](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。软件验证不等于真实器件实验验证，参考文献也不替代本地收敛证据。
+
+
+---
+来源：https://deconbear.github.io/causalwave/references/
+
+# 参考文献与相关软件
+
+本页区分基础数值方法、相邻软件与物理模型。列出文献表示说明来源与范围，不表示 CausalWave 复现了其中全部结果、实现了所有模型，或已经完成相互性能比较。软件名称与引用信息核对日期为 **2026-10-20**。
+
+## 基础数值方法
+
+### Gourlay（1970）：梯形法与 Goursat 问题 {#gourlay1970}
+
+A. R. Gourlay, “A note on trapezoidal methods for the solution of initial value problems,” *Mathematics of Computation* **24**, 629–633 (1970). [DOI：10.1090/S0025-5718-1970-0275680-3](https://doi.org/10.1090/S0025-5718-1970-0275680-3)；[AMS 原文](https://www.ams.org/journals/mcom/1970-24-111/S0025-5718-1970-0275680-3/S0025-5718-1970-0275680-3.pdf)。
+
+该文 §2 讨论 Goursat 问题的梯形差分。CausalWave 的 marcher 在常系数、标量且无局部演化项的子类中，经消元可得到对应的四角梯形构造。这是特定子类的代数对应，不是把一般变系数矩阵实现完全归属于该文，也不是声称该文首次提出所有相关方法。
+
+### Hochbruck 与 Ostermann（2010）：指数积分 {#hochbruck2010}
+
+M. Hochbruck and A. Ostermann, “Exponential integrators,” *Acta Numerica* **19**, 209–286 (2010). [DOI：10.1017/S0962492910000048](https://doi.org/10.1017/S0962492910000048)；[作者公开原稿](https://na.math.kit.edu/download/papers/acta-final.pdf)。
+
+§2.2 的 Example 2.6 给出指数梯形求积端点权重；取节点为 0 和 1 后，就是本项目 IF2 使用的 $\varphi_1-\varphi_2$ 与 $\varphi_2$。本项目在这一时间求积上处理 GEM 空间累积积分所产生的隐式耦合。引用该文不表示其全部误差或稳定性定理已经逐项验证适用于当前问题；IF2 是项目简称，不能凭名称与其他积分因子方法等同。
+
+## 相邻软件与工具链
+
+这些项目的方程层次和适用近似不同。选择比较对象时，应先匹配模型与精度，再比较时间和内存。CausalWave 当前没有提供 CoOMBE、clerq 或 mbsolve 的同精度基准测试。
+
+| 软件 | 来源说明的范围 | 与 CausalWave 的关系 |
+|---|---|---|
+| CoOMBE | 光学 Bloch/Lindblad 演化，以及旋波近似下一个或两个共传播光场的一维 Maxwell–Bloch 方程 | 更广的原子模型软件；弱探针处理与本项目相邻，但方程和归一化须逐项匹配 |
+| clerq（原 MaxwellBloch） | 基于 QuTiP 的多能级开放量子系统与经典 Maxwell 传播，含衰减、退相干及 Doppler 展宽 | 适合需要密度矩阵和更一般原子结构的问题；不是 CausalWave 的依赖或内置协议 |
+| mbsolve | 一维 Maxwell 方程与 Lindblad 方程耦合，不采用旋波近似的全波处理 | 比当前单向弱场包络模型包含更多物理；不能直接用默认计时比值比较优劣 |
+| XMDS2 | 为常微分、偏微分和随机微分方程生成数值仿真程序 | 可选外部工具链；本项目提供受限 GEM 示例及 Python 调用、读取接口 |
+
+### CoOMBE {#coombe2025}
+
+R. M. Potvliege and S. A. Wrathmall, “CoOMBE: A suite of open-source programs for the integration of the optical Bloch equations and Maxwell-Bloch equations,” *Computer Physics Communications* **306**, 109374 (2025). [DOI：10.1016/j.cpc.2024.109374](https://doi.org/10.1016/j.cpc.2024.109374)；[作者预印本及期刊信息](https://arxiv.org/abs/2406.19144)。
+
+其作者说明包括 Fortran 90 实现、稳态密度矩阵、速率方程极限与弱探针近似。这里的 2025 是期刊卷期年份，DOI 中的 2024 与此不冲突。
+
+### clerq / MaxwellBloch {#clerq}
+
+T. P. Ogden, *clerq* (2026), Zenodo，软件概念 DOI：[10.5281/zenodo.23269881](https://doi.org/10.5281/zenodo.23269881)。[作者仓库与当前引用说明](https://github.com/tpogden/clerq)；[官方重命名说明](https://clerq.org/news/rename.html)。
+
+该概念 DOI 覆盖多个版本；复现时仍应记录实际版本，能取得对应版本 DOI 时使用版本 DOI。旧文献和旧结果可能使用 MaxwellBloch 名称。官方说明还指出 0.13.0 修正了传播方程中的系数；历史结果与新版本比较时应核对方程约定，不能仅替换软件名称。此条是软件归档引用，不将其称为一篇已经核实的期刊论文。
+
+### mbsolve {#mbsolve2021}
+
+M. Riesch and C. Jirauschek, “mbsolve: An open-source solver tool for the Maxwell-Bloch equations,” *Computer Physics Communications* **268**, 108097 (2021). [DOI：10.1016/j.cpc.2021.108097](https://doi.org/10.1016/j.cpc.2021.108097)；[作者预印本](https://arxiv.org/abs/2005.05412)；[项目仓库](https://github.com/mriesch-tum/mbsolve)。
+
+该论文采用全波 Maxwell–Lindblad 模型并给出并行求解实现。它是相关研究软件的先例，不是当前 GEM 近似下已经对齐的性能基准。
+
+### XMDS2 {#xmds2013}
+
+G. R. Dennis, J. J. Hope, and M. T. Johnsson, “XMDS2: Fast, scalable simulation of coupled stochastic partial differential equations,” *Computer Physics Communications* **184**, 201–208 (2013). [DOI：10.1016/j.cpc.2012.08.016](https://doi.org/10.1016/j.cpc.2012.08.016)；[官方文档及引用说明](https://xmds2.readthedocs.io/en/latest/)。
+
+所链接文档镜像包含较旧的版本说明，不能据此确定本机或最新发布版本。CausalWave 不捆绑 XMDS2；其模板、工具链和结果格式边界见 [XMDS2 接口](xmds.md)。
+
+## 物理模型背景
+
+这些文献帮助识别当前协议的近似和应用语境。CausalWave 的数值验收见[验证页](validation.md)；并未由下面文献获得真实器件、量子噪声或量子态保真度方面的验证。
+
+### Hétet 等（2008）：两能级 GEM {#hetet2008}
+
+G. Hétet, J. J. Longdell, A. L. Alexander, P. K. Lam, and M. J. Sellars, “Electro-Optic Quantum Memory for Light Using Two-Level Atoms,” *Physical Review Letters* **100**, 023601 (2008). [DOI：10.1103/PhysRevLett.100.023601](https://doi.org/10.1103/PhysRevLett.100.023601)。
+
+这是两能级梯度回波协议的物理背景引用。软件使用的场归一化、参数单位和有符号衰减系数仍以[明确写出的方程](methods.md)为准。
+
+### Hosseini 等（2012）：Raman GEM {#hosseini2012}
+
+M. Hosseini, B. M. Sparkes, G. T. Campbell, P. K. Lam, and B. C. Buchler, “Storage and manipulation of light using a Raman gradient-echo process,” *Journal of Physics B: Atomic, Molecular and Optical Physics* **45**, 124004 (2012). [DOI：10.1088/0953-4075/45/12/124004](https://doi.org/10.1088/0953-4075/45/12/124004)。
+
+用于理解 Raman GEM 与有效模型的应用背景。把三能级体系约化为两能级方程时，必须另外检查失谐、控制场和绝热消除条件；一个类名或同一组符号不能替代这一步。
+
+### Fleischhauer 与 Lukin（2000）：EIT 与暗态极化激元 {#fleischhauer2000}
+
+M. Fleischhauer and M. D. Lukin, “Dark-State Polaritons in Electromagnetically Induced Transparency,” *Physical Review Letters* **84**, 5094–5097 (2000). [DOI：10.1103/PhysRevLett.84.5094](https://doi.org/10.1103/PhysRevLett.84.5094)；[出版方摘要](https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.84.5094)。
+
+提供弱场 EIT 中光与集体相干性耦合的背景。当前 `LambdaGEM` 的线性三能级实现和有限解析透射测试，不等同于已经复现所有光存储过程或量子态性质。
+
+## 数值接口
+
+[SciPy `solve_banded` 官方文档](https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.solve_banded.html)规定 IF2 使用的带状矩阵存储和求解接口。需要复现实验时，应同时记录 NumPy/SciPy、Python、CausalWave 版本及线程设置，不能只引用方法论文。

@@ -1,10 +1,10 @@
 cff-version: 1.2.0
-message: "如使用本软件，请引用此仓库版本，并单独引用所使用的XMDS2软件。"
-title: "gem-solvers：GEM的marcher与IF2复场数值求解器"
+message: "如使用本软件，请引用准确版本；数值方法与XMDS2的出处见文档参考文献。"
+title: "CausalWave：线性耦合传播方程的因果数值求解工具"
 authors:
   - name: "DeconBear"
-version: 0.1.0
+version: 0.2.0
 date-released: 2026-10-20
 license: MIT
-url: "https://github.com/DeconBear/gem-solvers"
-repository-code: "https://github.com/DeconBear/gem-solvers"
+url: "https://github.com/DeconBear/causalwave"
+repository-code: "https://github.com/DeconBear/causalwave"

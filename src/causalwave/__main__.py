@@ -22,7 +22,7 @@ def main():
     args = parser.parse_args()
     if args.command == "doctor":
         report = {"python": sys.version.split()[0], "numpy": version("numpy"),
-                  "scipy": version("scipy"), "gem-solvers": version("gem-solvers"),
+                  "scipy": version("scipy"), "causalwave": version("causalwave"),
                   "xmds2": shutil.which("xmds2"), "cxx": shutil.which("g++"),
                   "numerical_backends": ["if2", "marcher"], "gpu_required": False,
                   "note": "XMDS2为可选外部依赖，缺失不影响两个Python数值后端"}

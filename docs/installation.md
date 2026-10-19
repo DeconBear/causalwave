@@ -5,20 +5,22 @@
 Python 3.10 及以上；NumPy 2.0 及以上；SciPy 1.13.1 及以上。NumPy 2.0 下限来自观测量接口对 `np.trapezoid` 的使用。无 PyTorch、CUDA、训练权重、云服务或 API 密钥依赖。XMDS2 是单独可选的系统工具链。
 
 ```bash
-git clone https://github.com/DeconBear/gem-solvers.git
-cd gem-solvers
+git clone https://github.com/DeconBear/causalwave.git
+cd causalwave
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e '.[test]'
-gem-solvers doctor --json
+causalwave doctor --json
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q -m 'not xmds'
-gem-solvers demo --method if2 --output outputs/first.npz
+causalwave demo --method if2 --output outputs/first.npz
 ```
 
 目前没有发布 PyPI 版本；请使用上述 GitHub 地址。Windows PowerShell 使用 `.venv\Scripts\Activate.ps1` 激活环境。CPU 共享时用 `OPENBLAS_NUM_THREADS=1` 和 `OMP_NUM_THREADS=1` 限制库线程数；它们不限制外部 XMDS 程序的所有潜在并行配置。
 
 ## 检查结果
+
+0.2.0 起 Python 导入使用 `causalwave`，命令行使用 `causalwave`；旧 `gem_solvers` 导入不再提供。建议在新克隆目录建立虚拟环境；低层 `from marcher import ...` 保留。
 
 `doctor` 输出当前 Python、NumPy、SciPy、包版本以及可选编译器路径。`demo` 输出两个复场的形状、耗时和保存位置；它是有限网格的仿真，不是训练。已有结果文件拒绝覆盖，请换新文件名。读取：
 
@@ -35,6 +37,7 @@ with np.load("outputs/first.npz") as data:
 
 ```bash
 python -m pip install -e '.[test,docs,plot]'
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python examples/linear_system.py
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/validate_public.py
 python scripts/build_llms.py
 python -m mkdocs build --strict

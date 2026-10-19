@@ -2,4 +2,4 @@
 from .core import march_system
 from .protocols import GEM, LambdaGEM, Protocol, Result
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

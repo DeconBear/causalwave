@@ -29,7 +29,10 @@ def efficiency(E_out: np.ndarray, Ein: np.ndarray, t: np.ndarray,
     mask = mask if mask is not None else np.ones(len(t), dtype=bool)
     if mask.sum() == 0:
         return 0.0
-    num = float(np.trapezoid(np.abs(E_out[mask]) ** 2, t[mask]))
+    indices = np.flatnonzero(mask)
+    segments = np.split(indices, np.flatnonzero(np.diff(indices) > 1) + 1)
+    num = sum(float(np.trapezoid(np.abs(E_out[segment]) ** 2, t[segment]))
+              for segment in segments)
     den = float(np.trapezoid(np.abs(Ein) ** 2, t))
     return num / max(den, 1e-30)
 

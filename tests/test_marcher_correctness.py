@@ -6,7 +6,7 @@ from scipy.special import j0, j1
 
 from marcher import GEM, LambdaGEM
 from marcher.core import march_system
-from marcher.observables import echo_fidelity
+from marcher.observables import echo_fidelity, efficiency
 
 
 @pytest.mark.parametrize("t", [np.linspace(0, 1, 11), np.linspace(.5, 1, 11),
@@ -126,7 +126,81 @@ def test_multiple_coupled_fields_with_known_sources():
     np.testing.assert_allclose(actual_v, V, atol=1e-12)
 
 
-@pytest.mark.parametrize("factor", [0, -1, 1.5])
+@pytest.mark.parametrize("factor", [0, -1, 1.5, True])
 def test_invalid_refinement_rejected(factor):
     with pytest.raises(ValueError, match="正整数"):
         GEM(g=0, N=0, L=1, eta=0).solve([0, 1], [0, 1], [0, 1], t_factor=factor)
+
+
+@pytest.mark.parametrize("name,value", [("g", 1+1j), ("eta", np.inf),
+                                        ("gamma0", np.nan), ("L", 0)])
+@pytest.mark.parametrize("solver", [GEM, LambdaGEM])
+def test_protocol_physical_parameters_are_finite_real_scalars(solver, name, value):
+    """低层协议也必须在构造时检查实参数，不能产生静默非有限场。"""
+    params = dict(g=1, N=1, L=1, eta=0)
+    params[name] = value
+    with pytest.raises(ValueError):
+        solver(**params)
+
+
+@pytest.mark.parametrize("name,value", [("t", np.array([0, 1+1j])),
+                                        ("z", np.array([0, 1+1j])),
+                                        ("sw", np.array([1+1j, 1])),
+                                        ("sw", [1, np.inf]),
+                                        ("Ein", [1, np.nan])])
+def test_protocol_rejects_invalid_coordinates_and_drives(name, value):
+    """入口不丢弃坐标或控制虚部，并拒绝非有限入射。"""
+    args = dict(t=[0, 1], z=[0, 1], Ein=[1, 1], sw=[1, 1])
+    args[name] = value
+    with pytest.raises(ValueError):
+        GEM(g=1, N=1, L=1, eta=0).solve(**args, z_factor=1, t_factor=1)
+
+
+def test_protocol_rejects_silent_parameter_override():
+    """改变构造参数必须重新建对象，Lambda 的额外 delta0 参数仍可用。"""
+    sim = GEM(g=1, N=1, L=1, eta=0)
+    with pytest.raises(ValueError, match="重新构造"):
+        sim.solve([0, 1], [0, 1], [1, 1], eta=123)
+    sim = LambdaGEM(g=1, N=0, L=1)
+    result = sim.solve([0, 1], [0, 1], [1, 1], Omega=[1+1j, 2j], delta0=.2,
+                       z_factor=1, t_factor=1)
+    assert np.isfinite(result.sigma).all()
+    with pytest.raises(ValueError, match="实"):
+        sim.solve([0, 1], [0, 1], [1, 1], delta0=1j)
+
+
+@pytest.mark.parametrize("name", ["u_bc", "v_ic", "A_coef", "s_coef", "B_coef", "C_coef", "r_coef"])
+def test_core_rejects_nonfinite_boundary_initial_coefficients_and_sources(name):
+    """通用多场入口不能让任一非有限边界、初态、系数或源进入推进。"""
+    args = dict(z=[0, 1], t=[0, 1], u_bc=np.ones((1, 2)), v_ic=np.zeros((1, 2)),
+                A_coef=np.zeros((1, 1, 2, 2)), s_coef=np.zeros((1, 2, 2)),
+                B_coef=np.zeros((1, 1, 2, 2)), C_coef=np.zeros((1, 1, 2, 2)),
+                r_coef=np.zeros((1, 2, 2)))
+    args[name].flat[-1] = np.nan
+    with pytest.raises(ValueError, match="有限"):
+        march_system(**args, z_factor=1, t_factor=1)
+
+
+@pytest.mark.parametrize("name,shape", [("u_bc", (2,)), ("v_ic", (1, 3)),
+                                        ("A_coef", (1, 2, 2, 2)), ("r_coef", (2, 2))])
+def test_core_rejects_inconsistent_field_shapes(name, shape):
+    """形状错误用稳定的 ValueError 拒绝，不依赖可被优化关闭的 assert。"""
+    args = dict(z=[0, 1], t=[0, 1], u_bc=np.ones((1, 2)), v_ic=np.zeros((1, 2)),
+                A_coef=np.zeros((1, 1, 2, 2)), s_coef=np.zeros((1, 2, 2)),
+                B_coef=np.zeros((1, 1, 2, 2)), C_coef=np.zeros((1, 1, 2, 2)),
+                r_coef=np.zeros((1, 2, 2)))
+    args[name] = np.zeros(shape)
+    with pytest.raises(ValueError, match="形状"):
+        march_system(**args, z_factor=1, t_factor=1)
+
+
+def test_efficiency_integrates_disjoint_windows_separately():
+    """非均匀网格的分离窗口不跨间隔；孤立点与空窗口不贡献积分。"""
+    t = np.array([0., .1, .5, 1.5, 3., 4., 6.])
+    field = np.ones(len(t), dtype=complex)
+    mask = np.array([True, True, False, True, True, False, True])
+    assert efficiency(field, field, t, mask) == pytest.approx(1.6/6)
+    assert efficiency(field, field, t, np.zeros(len(t), dtype=bool)) == 0
+    mask = (t >= .5) & (t <= 4)
+    expected = np.trapezoid(abs(field[mask])**2, t[mask]) / np.trapezoid(abs(field)**2, t)
+    assert efficiency(field, field, t, mask) == expected

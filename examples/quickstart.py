@@ -1,6 +1,6 @@
 """两个后端同输入/同输出的轻量演示；可在任意工作目录运行。"""
 import numpy as np
-from gem_solvers import GEMParameters, Drive, solve_gem
+from causalwave import GEMParameters, Drive, solve_gem
 
 p=GEMParameters(g=1,N=5,L=1,eta=12,gamma=-.001)
 dt=np.linspace(0,2,201)

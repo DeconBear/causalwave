@@ -3,21 +3,21 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gem-solvers"
-version = "0.1.0"
-description = "GEM复场的marcher与IF2数值求解器，以及XMDS2 Python接口"
+name = "causalwave"
+version = "0.2.0"
+description = "线性耦合传播方程的因果数值求解：marcher、GEM专用IF2与XMDS2接口"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "DeconBear"}]
 dependencies = ["numpy>=2.0", "scipy>=1.13.1"]
-keywords = ["GEM", "quantum-memory", "Maxwell-Bloch", "exponential-integrator", "XMDS2"]
+keywords = ["linear-pde", "causal-propagation", "Maxwell-Bloch", "exponential-integrator", "XMDS2"]
 
 [project.urls]
-Homepage = "https://deconbear.github.io/gem-solvers/"
-Repository = "https://github.com/DeconBear/gem-solvers"
-Issues = "https://github.com/DeconBear/gem-solvers/issues"
+Homepage = "https://deconbear.github.io/causalwave/"
+Repository = "https://github.com/DeconBear/causalwave"
+Issues = "https://github.com/DeconBear/causalwave/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=8", "build>=1"]
@@ -25,13 +25,13 @@ plot = ["matplotlib>=3.7"]
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5,<10", "pymdown-extensions>=10"]
 
 [project.scripts]
-gem-solvers = "gem_solvers.__main__:main"
+causalwave = "causalwave.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-gem_solvers = ["templates/*.xmds"]
+causalwave = ["templates/*.xmds"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

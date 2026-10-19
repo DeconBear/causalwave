@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <simulation xmds-version="2">
   <name>gem</name>
-  <author>gem-solvers contributors</author>
+  <author>causalwave contributors</author>
   <description>两能级GEM示例；阶段边界与梯度翻转时刻严格对齐，输出完整复场。</description>
   <features>
     <validation kind="run-time"/>

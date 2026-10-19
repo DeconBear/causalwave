@@ -13,7 +13,10 @@ from scipy.linalg import solve_banded
 
 
 def _axis(values, name):
-    values = np.asarray(values, dtype=np.float64)
+    values = np.asarray(values)
+    if np.iscomplexobj(values) and np.any(values.imag != 0):
+        raise ValueError(f"{name} 必须为实值坐标")
+    values = np.asarray(values.real, dtype=np.float64)
     if (values.ndim != 1 or not len(values) or not np.isfinite(values).all()
             or values[0] < 0 or np.any(np.diff(values) <= 0)):
         raise ValueError(f"{name} 必须为非负、有限、严格递增的一维非空网格")

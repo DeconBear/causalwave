@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 from scipy.integrate import solve_ivp
-from gem_solvers import GEMParameters, Drive, solve_gem
+from causalwave import GEMParameters, Drive, solve_gem
 
 
 @pytest.mark.parametrize('method', ['if2','marcher'])
@@ -39,3 +39,33 @@ def test_invalid_inputs_and_save_no_overwrite(tmp_path):
     r=solve_gem(p,[0,1],[0,1],d);path=tmp_path/'out.npz';r.save(path)
     with pytest.raises(FileExistsError):r.save(path)
     with np.load(path) as f:np.testing.assert_array_equal(f['E'],r.E)
+
+
+@pytest.mark.parametrize('name,value', [('g', 1+1j), ('N', np.inf),
+                                        ('gamma', np.nan), ('eta', [1.]), ('L', 0.)])
+def test_parameters_require_finite_real_scalars(name, value):
+    """构造时拒绝非法参数，不能到不同后端才产生不同解释。"""
+    with pytest.raises(ValueError):
+        GEMParameters(**{name: value})
+
+
+def test_real_coordinates_do_not_discard_imaginary_parts():
+    """驱动和输出坐标的虚部必须报错，不能静默求解另一个问题。"""
+    with pytest.raises(ValueError, match='实值'):
+        Drive(np.array([0, 1+2j]), [1, 1], [1, 1])
+    drive = Drive([0, 1], [1+1j, 1-1j], [1, 1])
+    params = GEMParameters(g=1, N=0, L=1, eta=0)
+    for z, t in ((np.array([0, 1+2j]), [0, 1]),
+                 ([0, 1], np.array([0, 1+2j]))):
+        with pytest.raises(ValueError, match='实值'):
+            solve_gem(params, z, t, drive)
+
+
+def test_zero_imaginary_parameters_keep_both_backends_consistent():
+    """数学上为实数的复类型参数统一规范化，复入射仍保留。"""
+    params = GEMParameters(g=0+0j, N=0, L=1+0j, eta=0)
+    drive = Drive([0, 1], [1+1j, 1-1j], [1, 1])
+    results = [solve_gem(params, [0, 1], [0, 1], drive, method=method)
+               for method in ('if2', 'marcher')]
+    for result in results:
+        np.testing.assert_array_equal(result.E, [[1+1j, 1-1j], [1+1j, 1-1j]])

@@ -4,7 +4,7 @@ import pytest
 from scipy.integrate import solve_ivp
 from scipy.special import j0, j1
 
-from gem_solvers._if2_reference import solve_gem
+from causalwave._if2_reference import solve_gem
 
 
 def parameters(**updates):

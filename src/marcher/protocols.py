@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .core import march_system, _sample_output
+from .core import march_system, _sample_output, _real_array, _real_scalar
 from .observables import echo_fidelity, echo_peak, efficiency, window_mask
 
 
@@ -99,17 +99,28 @@ class Protocol:
         t, z: 严格递增网格（z 可传 L 标量则自动 linspace(0, L, 800)）。
         Ein: 输入脉冲曲线（实数/复数）。
         sw: 梯度开关曲线（None 则默认全 +1，即写入期协议）。
-        **curve_kwargs: 协议专属曲线（如 Omega）与参数覆盖。
+        **curve_kwargs: 协议专属曲线（如 Omega）与额外参数（如 delta0）。
+        构造时已有的物理参数不能在 solve 中覆盖，请重新构造协议对象。
         GEM/Λ-GEM 的 sw 左常值保持，Ein/Omega 线性插值，与 XMDS 对齐。
         return_fine=True 时 Result._fine 额外保存细网格解；公共字段仍在请求网格。
         """
-        t = np.asarray(t, dtype=np.float64)
-        z = np.asarray(z, dtype=np.float64) if np.ndim(z) else \
-            np.linspace(0.0, float(z), 800)
+        overrides = sorted(self.__dict__.keys() & curve_kwargs.keys())
+        if overrides:
+            raise ValueError(f"不支持在 solve 中覆盖 {', '.join(overrides)}；请重新构造协议对象")
+        t = _real_array(t, "t")
+        z = _real_array(z, "z")
+        if z.ndim == 0:
+            z = np.linspace(0.0, float(z), 800)
+        if t.ndim != 1 or z.ndim != 1:
+            raise ValueError("t/z 必须为一维网格")
         Ein = np.asarray(Ein, dtype=np.complex128)
+        if Ein.shape != t.shape or not np.isfinite(Ein).all():
+            raise ValueError("Ein 必须与 t 同形且有限")
         if sw is None:
             sw = np.ones_like(t)
-        sw = np.asarray(sw, dtype=np.float64)
+        sw = _real_array(sw, "sw")
+        if sw.shape != t.shape:
+            raise ValueError("sw 必须与 t 同形")
         curves = {"Ein": Ein, "sw": sw, **curve_kwargs}
 
         class _Ctx:
@@ -166,7 +177,10 @@ class GEM(Protocol):
 
     def __init__(self, g: float, N: float, L: float, eta: float,
                  gamma0: float = 1e-4):
-        self.g, self.N, self.L, self.eta, self.gamma0 = g, N, L, eta, gamma0
+        for name, value in dict(g=g, N=N, L=L, eta=eta, gamma0=gamma0).items():
+            setattr(self, name, _real_scalar(value, name))
+        if self.L <= 0:
+            raise ValueError("L必须为正")
 
     def _coefficients(self, ctx):
         nz, nt = ctx.nz, ctx.nt
@@ -203,8 +217,11 @@ class LambdaGEM(Protocol):
 
     def __init__(self, g: float, N: float, L: float, eta: float = 0.0,
                  gamma0: float = 1e-4, gamma_e: float = 2.0, Delta: float = 0.0):
-        self.g, self.N, self.L, self.eta = g, N, L, eta
-        self.gamma0, self.gamma_e, self.Delta = gamma0, gamma_e, Delta
+        for name, value in dict(g=g, N=N, L=L, eta=eta, gamma0=gamma0,
+                                gamma_e=gamma_e, Delta=Delta).items():
+            setattr(self, name, _real_scalar(value, name))
+        if self.L <= 0:
+            raise ValueError("L必须为正")
 
     @property
     def n_evolution(self) -> int:
@@ -212,7 +229,7 @@ class LambdaGEM(Protocol):
 
     def _coefficients(self, ctx):
         nz, nt = ctx.nz, ctx.nt
-        delta0 = float(ctx.params.get("delta0", 0.0))
+        delta0 = _real_scalar(ctx.params.get("delta0", 0.0), "delta0")
         Omega = np.asarray(ctx.curves.get("Omega", np.zeros(nt)),
                            dtype=np.complex128)
         det = (delta0 + ctx.sw[np.newaxis, :] * self.eta

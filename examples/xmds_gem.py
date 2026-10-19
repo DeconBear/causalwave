@@ -1,7 +1,7 @@
 """外部XMDS2示例：目录必须尚不存在，结果包含真实输出坐标。"""
 import argparse
-from gem_solvers import GEMParameters
-from gem_solvers.xmds import XMDSConfig,run_gem
+from causalwave import GEMParameters
+from causalwave.xmds import XMDSConfig,run_gem
 
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--directory',required=True)

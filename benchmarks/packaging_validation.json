@@ -1,8 +1,27 @@
 {
-  "wheel": "gem_solvers-0.1.0-py3-none-any.whl",
+  "version": "0.2.0",
+  "wheel": "causalwave-0.2.0-py3-none-any.whl",
+  "wheel_sha256": "9a1ecae515e52f1423c7211160a3ca55b486fa023fe6c8fa016928cdd9ad5932",
   "isolated_venv": true,
   "outside_source_tree": true,
   "doctor_passed": true,
   "demo_passed": true,
-  "xmds_template_in_wheel": true
+  "xmds_template_in_wheel": true,
+  "generic_entrypoint": true,
+  "legacy_namespace_in_wheel": false,
+  "environment": {
+    "python": "3.13.11",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1"
+  },
+  "probe": {
+    "version": "0.2.0",
+    "installed_in_venv": true,
+    "finite_complex_fields": true,
+    "template": true
+  },
+  "demo_shape": [
+    61,
+    121
+  ]
 }

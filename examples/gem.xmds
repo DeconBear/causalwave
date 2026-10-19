@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <simulation xmds-version="2">
   <name>gem</name>
-  <author>gem-solvers contributors</author>
+  <author>causalwave contributors</author>
   <description>&#20004;&#33021;&#32423;GEM&#31034;&#20363;&#65307;&#38454;&#27573;&#36793;&#30028;&#19982;&#26799;&#24230;&#32763;&#36716;&#26102;&#21051;&#20005;&#26684;&#23545;&#40784;&#65292;&#36755;&#20986;&#23436;&#25972;&#22797;&#22330;&#12290;</description>
   <features>
     <validation kind="run-time"/>

@@ -4,7 +4,7 @@
 
 ## 可直接复制的用户请求
 
-> 请从 https://github.com/DeconBear/gem-solvers 安装 GEM Solvers。在新目录克隆，阅读 AGENTS.md 和 llms.txt，创建独立虚拟环境，安装 test 依赖，运行 doctor、非 XMDS 测试和一次小型 IF2 demo。记录版本、命令、退出码与输出路径。不要改全局 Python，不要训练或用 GPU。如果我还要求 XMDS 仿真，请先检查系统工具链；缺失时说明需要安装哪些软件，不擅自 sudo。只根据真实执行结果报告是否成功。
+> 请从 https://github.com/DeconBear/causalwave 安装 CausalWave。在新目录克隆，阅读 AGENTS.md 和 llms.txt，创建独立虚拟环境，安装 test 依赖，运行 doctor、非 XMDS 测试和一次小型 IF2 demo。记录版本、命令、退出码与输出路径。不要改全局 Python，不要训练或用 GPU。如果我还要求 XMDS 仿真，请先检查系统工具链；缺失时说明需要安装哪些软件，不擅自 sudo。只根据真实执行结果报告是否成功。
 
 ## 最小执行序列
 
@@ -14,9 +14,9 @@
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e '.[test]'
-.venv/bin/gem-solvers doctor --json
+.venv/bin/causalwave doctor --json
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m pytest -q -m 'not xmds'
-.venv/bin/gem-solvers demo --method if2 --output outputs/agent-first.npz
+.venv/bin/causalwave demo --method if2 --output outputs/agent-first.npz
 ```
 
 成功标准：安装命令退出码为零，doctor 可导入依赖，测试完成且无失败，demo 保存有限复数组。测试数可能随版本变化，**不能硬编码一个旧数字来伪造验收**。若相同文件已存在，保留文件并改用新的输出名。
@@ -26,7 +26,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m pytest -q -m 'not x
 ```bash
 xmds2 --help
 .venv/bin/python -m pytest -q -m xmds
-.venv/bin/gem-solvers xmds-example --directory outputs/agent-xmds-first
+.venv/bin/causalwave xmds-example --directory outputs/agent-xmds-first
 ```
 
 只有实际安装工具链并运行成功才能称为 XMDS 已验收。因依赖缺失而 skipped 与 passed 不同。查看 `compile.log`、`simulation.log`、`run.json` 定位失败；不要删除日志后重复声称成功。不要把随机网上的 XMDS XML 当成纯配置：里面可以含可执行 C++。

@@ -10,7 +10,7 @@ XMDS2 是独立的微分方程代码生成工具。本项目不捆绑其编译�
 sudo apt-get update
 sudo apt-get install xmds2 g++ libfftw3-dev
 xmds2 --help
-gem-solvers doctor --json
+causalwave doctor --json
 python -m pytest -q -m xmds
 ```
 
@@ -19,8 +19,8 @@ python -m pytest -q -m xmds
 ## 配置与调用
 
 ```python
-from gem_solvers import GEMParameters
-from gem_solvers.xmds import XMDSConfig, render_gem, run_gem
+from causalwave import GEMParameters
+from causalwave.xmds import XMDSConfig, render_gem, run_gem
 
 config = XMDSConfig(
     params=GEMParameters(g=1, N=2, L=1, eta=4, gamma=-0.01),
@@ -49,7 +49,7 @@ print(run.compile_seconds, run.run_seconds)
 |`gem.xsil`|本模板定义的 ASCII 复场数据|
 |生成程序及中间文件|由 XMDS 工具链产生，不提交到仓库|
 
-`timeout` 对编译和运行阶段分别生效，超时后终止本次子进程组并保留日志。报错不会删掉失败目录，也不会覆盖旧结果。
+`timeout` 对编译和运行阶段分别生效；超时、Ctrl-C 或等待异常都会终止并回收本次子进程，POSIX 系统同时终止其独立进程组。日志和源文件保留，Ctrl-C 或 `SystemExit` 在 `run.json` 中记为 `INTERRUPTED`，其他异常记为 `FAILED`，随后继续抛出原异常（超时转为 `TimeoutError`）。报错不会删掉失败目录，也不会覆盖旧结果。
 
 ## 真实坐标与输出合同
 
@@ -62,14 +62,14 @@ XMDS 的这个空间网格通常**不包含右端点 $L$**；例如默认输出�
 ## 自定义可信输入
 
 ```python
-from gem_solvers.xmds import run_file
+from causalwave.xmds import run_file
 run = run_file("examples/gem.xmds", "outputs/custom-case")
 fields = run.read()
 ```
 
 `run_file` 要求输入自包含且 `<name>gem</name>`，不会自动复制外部数据文件。输出读取仍受上述格式限制。XML 可以嵌入任意 C++，应当与运行一段本地源代码一样只使用可信文件；独立工作目录不是安全沙箱。
 
-`examples/gem.xmds` 为可直接编译的静态示例；参数化模板位于 `src/gem_solvers/templates/gem.xmds`。模板中的中文说明以 XML 字符实体输出，兼容部分 XMDS 安装对源文本 ASCII 编码的要求。
+`examples/gem.xmds` 为可直接编译的静态示例；参数化模板位于 `src/causalwave/templates/gem.xmds`。模板中的中文说明以 XML 字符实体输出，兼容部分 XMDS 安装对源文本 ASCII 编码的要求。
 
 ## 与 Python 后端比较
 

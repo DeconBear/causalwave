@@ -1,8 +1,8 @@
 """缓存只节省重复计算，不改变数值结果或输入合同。"""
 import numpy as np
 import pytest
-from gem_solvers._if2_reference import solve_gem
-from gem_solvers._if2 import solve_gem_cached
+from causalwave._if2_reference import solve_gem
+from causalwave._if2 import solve_gem_cached
 
 
 @pytest.mark.parametrize('z_factor,t_factor',[(1,1),(2,1),(4,2)])

@@ -18,6 +18,25 @@ from __future__ import annotations
 import numpy as np
 
 
+def _real_array(values, name):
+    """验证实值输入，不能通过强制转换丢弃非零虚部。"""
+    values = np.asarray(values)
+    if np.iscomplexobj(values) and np.any(values.imag != 0):
+        raise ValueError(f"{name} 必须为有限实值")
+    values = np.asarray(values.real, dtype=np.float64)
+    if not np.isfinite(values).all():
+        raise ValueError(f"{name} 必须为有限实值")
+    return values
+
+
+def _real_scalar(value, name):
+    """物理参数只接受有限实标量。"""
+    value = _real_array(value, name)
+    if value.ndim != 0:
+        raise ValueError(f"{name} 必须为有限实标量")
+    return float(value)
+
+
 def _fine_grid(z0: np.ndarray, t0: np.ndarray, z_factor: int, t_factor: int):
     """逐区间加密，精确保留原坐标；缺少 t=0 时补初始点。"""
     for name, axis in (("z", z0), ("t", t0)):
@@ -26,7 +45,7 @@ def _fine_grid(z0: np.ndarray, t0: np.ndarray, z_factor: int, t_factor: int):
     if z0[0] != 0 or t0[0] < 0:
         raise ValueError("需要 z[0]=0、t[0]>=0，初始条件定义于 t=0")
     for factor in (z_factor, t_factor):
-        if not isinstance(factor, (int, np.integer)) or factor < 1:
+        if not isinstance(factor, (int, np.integer)) or isinstance(factor, bool) or factor < 1:
             raise ValueError("网格加密倍数必须为正整数")
 
     def refine(axis, factor):
@@ -213,8 +232,9 @@ def march_system(
     B_step_mask 为 (Q,Q) 布尔矩阵：选中分量沿时间左常值保持；
     跳变点已包含在细网格中，每个积分区间使用其内部的单侧值。
     """
-    z = np.asarray(z, dtype=np.float64)
-    t = np.asarray(t, dtype=np.float64)
+    z = _real_array(z, "z")
+    t = _real_array(t, "t")
+    z_fine, t_fine, t_base = _fine_grid(z, t, z_factor, t_factor)
     u_bc = np.asarray(u_bc, dtype=np.complex128)
     v_ic = np.asarray(v_ic, dtype=np.complex128)
     A = np.asarray(A_coef, dtype=np.complex128)
@@ -223,12 +243,22 @@ def march_system(
     C = np.asarray(C_coef, dtype=np.complex128)
     r = np.asarray(r_coef, dtype=np.complex128)
 
-    P, Q = u_bc.shape[0], v_ic.shape[0]
     nz, nt = len(z), len(t)
-    assert A.shape == (P, Q, nz, nt) and s.shape == (P, nz, nt)
-    assert B.shape == (Q, Q, nz, nt) and C.shape == (Q, P, nz, nt) and r.shape == (Q, nz, nt)
+    if u_bc.ndim != 2 or u_bc.shape[0] < 1 or u_bc.shape[1] != nt:
+        raise ValueError("u_bc 形状必须为 (P, nt)，P至少为1")
+    if v_ic.ndim != 2 or v_ic.shape[0] < 1 or v_ic.shape[1] != nz:
+        raise ValueError("v_ic 形状必须为 (Q, nz)，Q至少为1")
+    P, Q = u_bc.shape[0], v_ic.shape[0]
+    for name, value, shape in (("A", A, (P, Q, nz, nt)), ("s", s, (P, nz, nt)),
+                               ("B", B, (Q, Q, nz, nt)), ("C", C, (Q, P, nz, nt)),
+                               ("r", r, (Q, nz, nt))):
+        if value.shape != shape:
+            raise ValueError(f"{name} 形状必须为 {shape}")
+    for name, value in (("u_bc", u_bc), ("v_ic", v_ic), ("A", A), ("s", s),
+                        ("B", B), ("C", C), ("r", r)):
+        if not np.isfinite(value).all():
+            raise ValueError(f"{name} 必须有限")
 
-    z_fine, t_fine, t_base = _fine_grid(z, t, z_factor, t_factor)
     nzf, ntf = len(z_fine), len(t_fine)
     dz_half = np.diff(z_fine) / 2.0
     dt_half = np.diff(t_fine) / 2.0

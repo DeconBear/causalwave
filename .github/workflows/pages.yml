@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install '.[docs]'
+      - run: python scripts/build_llms.py
+      - run: git diff --exit-code -- llms.txt docs/llms.txt docs/llms-full.txt
       - run: python -m mkdocs build --strict
       - uses: actions/upload-pages-artifact@v4
         with:

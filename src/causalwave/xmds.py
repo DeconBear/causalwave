@@ -53,7 +53,7 @@ def render_gem(config=XMDSConfig()):
                   pulse_time=config.pulse_time, pulse_width=config.pulse_width,
                   amplitude=config.amplitude, lattice=config.lattice, z_samples=config.z_samples,
                   steps=config.steps_per_stage, samples=config.samples_per_stage, tolerance=config.tolerance)
-    template = files("gem_solvers").joinpath("templates/gem.xmds").read_text(encoding="utf-8")
+    template = files("causalwave").joinpath("templates/gem.xmds").read_text(encoding="utf-8")
     return Template(template).substitute(values).encode("ascii", "xmlcharrefreplace").decode("ascii")
 
 
@@ -64,13 +64,19 @@ def _command(args, cwd, log_name, timeout):
                                    start_new_session=(os.name == "posix"))
         try:
             returncode = process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            if os.name == "posix":
-                os.killpg(process.pid, signal.SIGKILL)
-            else:
-                process.kill()
+        except BaseException as exc:
+            # 中断也必须回收本次启动的子进程；独立会话不影响其他任务。
+            try:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass  # 子进程可能已在异常处理前退出。
             process.wait()
-            raise TimeoutError(f"命令超时，日志保留于{cwd / log_name}") from None
+            if isinstance(exc, subprocess.TimeoutExpired):
+                raise TimeoutError(f"命令超时，日志保留于{cwd / log_name}") from None
+            raise
     if returncode:
         raise RuntimeError(f"命令失败（返回码{returncode}），请查看{cwd / log_name}")
     return time.perf_counter() - start
@@ -111,8 +117,9 @@ def _run_text(text, directory, *, timeout):
         elapsed = _command([str(directory / "gem")], directory, "simulation.log", timeout)
         metadata.update(state="COMPLETE", run_seconds=elapsed)
         return XMDSRun(directory, compiled, elapsed)
-    except Exception as exc:
-        metadata.update(state="FAILED", error=str(exc))
+    except BaseException as exc:
+        state = "INTERRUPTED" if isinstance(exc, (KeyboardInterrupt, SystemExit)) else "FAILED"
+        metadata.update(state=state, error=f"{type(exc).__name__}: {exc}")
         raise
     finally:
         path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")

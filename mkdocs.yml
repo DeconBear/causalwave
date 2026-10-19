@@ -1,8 +1,8 @@
-site_name: GEM Solvers
-site_description: 梯度回波记忆的复场数值求解、数学推导与可复现验证
-site_url: https://deconbear.github.io/gem-solvers/
-repo_url: https://github.com/DeconBear/gem-solvers
-repo_name: DeconBear/gem-solvers
+site_name: CausalWave
+site_description: 线性耦合传播方程的因果数值求解、数学推导与可复现验证
+site_url: https://deconbear.github.io/causalwave/
+repo_url: https://github.com/DeconBear/causalwave
+repo_name: DeconBear/causalwave
 copyright: © 2026 DeconBear · MIT
 strict: true
 theme:
@@ -25,6 +25,7 @@ nav:
   - XMDS2 接口: xmds.md
   - 给 LLM 与 agent: agents.md
   - 来源与引用: provenance.md
+  - 参考文献与相关软件: references.md
 markdown_extensions:
   - admonition
   - attr_list

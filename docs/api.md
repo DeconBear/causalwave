@@ -1,10 +1,18 @@
 # Python API 与数据合同
 
+## 通用线性块接口 {#linear-system}
+
+`from causalwave import march_system` 与 `from marcher import march_system` 指向同一内核。它求解 $U_z=AV+s,\ V_t=BV+CU+r$；系数必须预先给定，允许依赖时空，不允许依赖未知场形成非线性。完整示例在仓库 `examples/linear_system.py`，可直接运行并与解析解比较。
+
+传入 `z, t, u_bc, v_ic, A_coef, s_coef, B_coef, C_coef, r_coef`。边界 `u_bc` 形状为 `(P, nt)`，初态 `v_ic` 为 `(Q, nz)`；系数形状依次为 `(P,Q,nz,nt)`、`(P,nz,nt)`、`(Q,Q,nz,nt)`、`(Q,P,nz,nt)`、`(Q,nz,nt)`。返回 `U.shape=(P,nz,nt)`、`V.shape=(Q,nz,nt)`，保留所有复数分量。
+
+建议显式提供从零开始的空间与时间节点。低层接口对首个时间采样之前的驱动/系数采用常数延拓，不能代替丢失的历史输入。只有 `B_step_mask` 选中的 B 分量按时间左常值保持；其他系数与边界按线性插值处理，不能由“包含事件节点”推断所有系数都支持跳变。
+
 ## 统一 GEM 接口
 
 ```python
 import numpy as np
-from gem_solvers import GEMParameters, Drive, GEMResult, solve_gem
+from causalwave import GEMParameters, Drive, GEMResult, solve_gem
 
 p = GEMParameters(g=1, N=2, L=1, eta=4, gamma=-0.01)
 nodes = np.linspace(0, 2, 201)
@@ -23,7 +31,7 @@ result = solve_gem(p, np.linspace(0,1,41), np.linspace(0,2,81), drive,
 |`eta`|100.0|线性空间失谐梯度|
 |`gamma`|0.0|`+gamma*alpha` 中的有符号系数；负值对应衰减|
 
-全部参数必须有限。默认值不是推荐精度配置。数据类冻结，方便保留求解参数。
+全部参数必须为有限实标量，不接受非零虚部；默认值不是推荐精度配置。数据类冻结，方便保留求解参数。
 
 ### `Drive(t, Ein, sw)`
 
@@ -56,6 +64,8 @@ print(low.E.shape, low.alpha.shape)
 
 低层 `GEM.gamma0` 是式中正号的**有符号**系数，其历史默认值 `1e-4` 会产生增长，与统一 API 的 `gamma=0` 默认值不同；建议总是显式指定。
 
+构造参数不能在 `solve(..., eta=...)` 等调用中覆盖；需要改变参数时重新构造协议对象。`LambdaGEM` 的额外控制 `Omega` 和 `delta0` 按下文传入。
+
 ### Λ-GEM 与协议扩展
 
 `marcher.LambdaGEM(g, N, L, eta=0, gamma0=1e-4, gamma_e=2, Delta=0)` 增加光学相干性 $\sigma_{13}$ 与自旋相干性 $\sigma_{12}$：
@@ -73,6 +83,8 @@ $$
 
 继承 `Protocol` 时覆写 `_coefficients(ctx)` 返回 `A,s,B,C,r`，分别对应形状 `(P,Q,nz,nt)`、`(P,nz,nt)`、`(Q,Q,nz,nt)`、`(Q,P,nz,nt)`、`(Q,nz,nt)`；可覆写 `_u_boundary`、`_v_initial` 以及场数属性。需要阶跃的 `B` 分量用 `_B_step_mask` 声明。数学定义见[式 (3)](methods.md)。
 
+`Protocol._pack` 默认仅将 `U[0]` 放进 `Result.E`；需要多个传播场或自定义演化场输出时，应覆写 `_pack`，或直接调用 `march_system` 取得全部 U/V。不能只修改场数属性便认为所有分量都会保留在 `Result` 中。
+
 ## 观测量的解释限制
 
 低层 `Result.output` 是 `E[-1]`，只有 `z[-1]=L` 时才是严格出口。
@@ -82,4 +94,4 @@ $$
 - `echo_fidelity(...)`：与时间反转入射曲线的归一化复内积**模，不平方**；按数组点等权内积，不对非均匀采样做积分权重。它不是量子态保真度。
 - `transmission_spectrum` 的历史返回值是末时刻**振幅模**，不是强度透射率；必须自行确认达到稳态。
 
-存在多段不连续读出窗口时，直接在筛选后的坐标上做梯形积分会跨越间隔；应逐连续窗口分别积分。公开保留这些低层历史接口，但论文中的物理量必须明确窗口、权重和归一化。
+多段不连续读出窗口按原网格中连续为 True 的各段分别做梯形积分，不跨越未选择的间隔；单点或空窗口贡献为零。窗口边缘以选中的采样节点为准，不额外猜测节点间的切换时刻。论文中的物理量必须明确窗口、权重和归一化。
